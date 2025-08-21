@@ -1,4 +1,4 @@
-# SpinQuant-Mini
+# AlphaQuant
 
 ### 1) Quantize & calibrate
 
