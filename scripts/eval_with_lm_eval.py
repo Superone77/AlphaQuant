@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 from lm_eval import evaluator
 from lm_eval.models.huggingface import HFLM
-from spinquant_mini import (
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from alphaquant import (
     replace_linear_with_quant, QuantLinearConfig,
     MXFP4Quantizer, MXFP4Config,
     MXFP8Quantizer, MXFP8Config,

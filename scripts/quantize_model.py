@@ -4,7 +4,8 @@ import argparse
 import json
 import os
 from typing import Any, Dict
-
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from alphaquant.utils.replacement import load_layer_config, plan_model_layer_schemes, summarize_config
 
 
