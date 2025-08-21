@@ -90,7 +90,10 @@ def plan_model_layer_schemes(model: Any, cfg: Dict[str, Any], target_module_clas
     for module_name, module in model.named_modules():
         cls_name = module.__class__.__name__
         if cls_name in target_module_classes:
-            plans.append((module_name, resolve_scheme_for_module(module_name, cfg)))
+            scheme = resolve_scheme_for_module(module_name, cfg)
+            if scheme.get("skip"):
+                continue
+            plans.append((module_name, scheme))
     return plans
 
 

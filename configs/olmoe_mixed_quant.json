@@ -1,0 +1,15 @@
+{
+  "default": {},
+  "overrides": [
+    { "pattern": "*lm_head*", "skip": true },
+    { "pattern": "*.mlp.gate*", "skip": true },
+
+    { "pattern": "*attn.*", "wq": "mxfp8", "aq": "mxfp8", "group_size": 128 },
+    { "pattern": "*.attention.*", "wq": "mxfp8", "aq": "mxfp8", "group_size": 128 },
+    { "pattern": "*.self_attn.*", "wq": "mxfp8", "aq": "mxfp8", "group_size": 128 },
+
+    { "pattern": "*.experts.*.gate_proj", "wq": "mxfp4", "aq": "mxfp4", "group_size": 64 },
+    { "pattern": "*.experts.*.up_proj",   "wq": "mxfp4", "aq": "mxfp4", "group_size": 64 },
+    { "pattern": "*.experts.*.down_proj", "wq": "mxfp4", "aq": "mxfp4", "group_size": 64 }
+  ]
+} 

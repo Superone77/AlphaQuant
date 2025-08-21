@@ -58,3 +58,20 @@ python scripts/quantize_model.py \
 ```
 
 Note: This only produces a mapping plan. Hook your actual replacement/quantization logic where needed (e.g., apply the plan to replace `nn.Linear` with `QuantLinear`).
+
+### Notes
+- You can also set `"skip": true` in an override to explicitly exclude matched modules from quantization in the planning stage.
+- An OLMoE-oriented preset is available at `configs/olmoe_mixed_quant.json`:
+  - Skip all `*.mlp.gate*` and `*lm_head*`
+  - Quantize all attention layers with MXFP8
+  - Inside `*.experts.*`, set `{gate_proj,up_proj,down_proj}` to MXFP4
+
+Example usage:
+```bash
+python scripts/quantize_model.py \
+  --model allenai/OLMoE-1B \
+  --device cuda \
+  --dtype bf16 \
+  --layer-config configs/olmoe_mixed_quant.json \
+  --save-plan ./plans/olmoe_mixed_expanded.json
+```
