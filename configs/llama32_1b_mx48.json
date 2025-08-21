@@ -1,0 +1,7 @@
+{
+  "default": {"wq": "mxfp8", "aq": "mxfp8", "group_size": 128},
+  "overrides": [
+    {"pattern": "model.layers.0.*", "wq": "mxfp4"},
+    {"pattern": "model.layers.*.q_proj", "wq": "mxfp4", "group_size": 64}
+  ]
+} 
