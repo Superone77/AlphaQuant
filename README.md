@@ -18,3 +18,43 @@ python scripts/eval_with_lm_eval.py \
   --tasks hellaswag,arc_easy,winogrande \
   --batch_size 8
 ```
+
+## Layer-wise JSON config
+You can control which layers use which quantization scheme via a JSON file passed with `--layer-config`.
+
+Example JSON (`configs/llama32_1b_mx48.json`):
+
+```json
+{
+  "default": {"wq": "mxfp8", "aq": "mxfp8", "group_size": 128},
+  "overrides": [
+    {"pattern": "model.layers.0.*", "wq": "mxfp4"},
+    {"pattern": "model.layers.*.q_proj", "wq": "mxfp4", "group_size": 64}
+  ]
+}
+```
+
+- **pattern**: glob pattern matched against names from `model.named_modules()`, e.g., `model.layers.12.q_proj`.
+- **default**: base scheme applied to all matched target modules before overrides.
+- Any extra fields (e.g., `block_size`) are passed through for your scheme implementation to consume.
+
+Dry-run to preview the plan (no model load required):
+
+```bash
+python scripts/quantize_model.py \
+  --layer-config configs/llama32_1b_mx48.json \
+  --dry-run --save-plan ./plans/llama32_1b_mx48_preview.json
+```
+
+Expand the plan against a specific model (loads the model):
+
+```bash
+python scripts/quantize_model.py \
+  --model meta-llama/Llama-3.2-1B \
+  --device cpu \
+  --dtype fp32 \
+  --layer-config configs/llama32_1b_mx48.json \
+  --save-plan ./plans/llama32_1b_mx48_expanded.json
+```
+
+Note: This only produces a mapping plan. Hook your actual replacement/quantization logic where needed (e.g., apply the plan to replace `nn.Linear` with `QuantLinear`).

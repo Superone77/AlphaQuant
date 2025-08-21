@@ -2,11 +2,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 import torch
 from .base import Quantizer, QuantizerConfig
+from typing import Any, Dict, Optional
+
+from .base import QuantSchemeConfig
+
 
 @dataclass
-class MXFP4Config(QuantizerConfig):
-    group_size: int = 64
-    dtype: str = "float16"
+class MXFP4Config(QuantSchemeConfig):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, extra: Optional[Dict[str, Any]] = None):
+        super().__init__(name="mxfp4", wq=wq, aq=aq, group_size=group_size, extra=extra)
 
 class MXFP4Quantizer(Quantizer):
     """

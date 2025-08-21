@@ -1,64 +1,60 @@
 #!/usr/bin/env python
 from __future__ import annotations
-import argparse, json
-import torch
-from spinquant_mini import (
-    replace_linear_with_quant, QuantLinearConfig,
-    MXFP4Quantizer, MXFP4Config,
-    MXFP8Quantizer, MXFP8Config,
-    Calibrator,
-)
-from spinquant_mini.utils.hf_utils import load_hf_causal_lm
-from datasets import load_dataset
+import argparse
+import json
+import os
+from typing import Any, Dict
 
-QCLS = {
-    'mxfp4': (MXFP4Quantizer, MXFP4Config),
-    'mxfp8': (MXFP8Quantizer, MXFP8Config),
-}
+from alphaquant.utils.replacement import load_layer_config, plan_model_layer_schemes, summarize_config
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--model', required=True)
-    ap.add_argument('--device', default='cuda')
-    ap.add_argument('--dtype', default='bfloat16')
-    ap.add_argument('--include', nargs='*', default=['q_proj','k_proj','v_proj','o_proj','gate_proj','up_proj','down_proj'])
-    ap.add_argument('--exclude', nargs='*', default=[])
-    ap.add_argument('--wq', choices=QCLS.keys(), default='mxfp4')
-    ap.add_argument('--aq', choices=QCLS.keys(), default='mxfp8')
-    ap.add_argument('--group', type=int, default=64)
-    ap.add_argument('--calib_ds', default='wikitext', help='HF dataset path')
-    ap.add_argument('--calib_split', default='wikitext-2-raw-v1')
-    ap.add_argument('--calib_batches', type=int, default=16)
-    ap.add_argument('--save', default=None, help='save dir for quantized model (optional, safetensors)')
-    args = ap.parse_args()
 
-    model, tok = load_hf_causal_lm(args.model, args.device, args.dtype)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Quantize model with layer-wise configuration")
+    parser.add_argument("--model", type=str, default=None, help="HF model id or local path (optional in --dry-run)")
+    parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
+    parser.add_argument("--dtype", type=str, default="fp32", help="fp32|fp16|bf16")
+    parser.add_argument("--layer-config", type=str, required=True, help="Path to JSON defining layer-wise schemes")
+    parser.add_argument("--dry-run", action="store_true", help="Only print the plan without loading the model")
+    parser.add_argument("--save-plan", type=str, default=None, help="Optional path to save the expanded plan as JSON")
+    return parser.parse_args()
 
-    WQ, WCfg = QCLS[args.wq]
-    AQ, ACfg = QCLS[args.aq]
-    wcfg = WCfg(group_size=args.group, dtype=args.dtype)
-    acfg = ACfg(group_size=args.group, dtype=args.dtype)
 
-    qcfg = QuantLinearConfig(weight_quantizer_cls=WQ, weight_quantizer_cfg=wcfg,
-                             act_quantizer_cls=AQ, act_quantizer_cfg=acfg, bias=True)
+def main() -> None:
+    args = parse_args()
 
-    replaced = replace_linear_with_quant(model, qcfg, include=args.include, exclude=args.exclude)
-    print(f"Replaced {len(replaced)} linear layers. Examples: {replaced[:8]}")
+    cfg: Dict[str, Any] = load_layer_config(args.layer_config)
+    print(summarize_config(cfg))
 
-    # calibration dataloader
-    ds = load_dataset(args.calib_ds, args.calib_split)
-    texts = ds['train']['text'][:args.calib_batches*8]
-    toks = tok(texts, return_tensors='pt', padding=True, truncation=True, max_length=512)
-    from torch.utils.data import DataLoader, TensorDataset
-    dl = DataLoader(dict(input_ids=toks['input_ids'], attention_mask=toks['attention_mask']), batch_size=8)
+    if args.dry_run and not args.model:
+        print("[dry-run] Skipping model load and layer expansion.")
+        if args.save_plan:
+            with open(args.save_plan, "w") as f:
+                json.dump({"summary": summarize_config(cfg)}, f, indent=2)
+        return
 
-    Calibrator(model).collect(dl, num_batches=args.calib_batches, device=args.device)
-    print("Calibration finished.")
+    # Load model only if requested / needed
+    if args.model is None:
+        raise SystemExit("--model must be provided unless --dry-run is used")
 
-    if args.save:
-        model.save_pretrained(args.save, safe_serialization=True)
-        tok.save_pretrained(args.save)
-        print(f"Saved quantized model to {args.save}")
+    # Optional imports to avoid hard deps when dry-running
+    from alphaquant.utils.hf_utils import load_hf_causal_lm
 
-if __name__ == '__main__':
+    print(f"Loading model: {args.model} (device={args.device}, dtype={args.dtype})")
+    model = load_hf_causal_lm(args.model, device=args.device, dtype=args.dtype)
+
+    plan = plan_model_layer_schemes(model, cfg)
+    print(f"Planned {len(plan)} target modules.")
+    for name, scheme in plan[:50]:
+        print(f"  {name}: {scheme}")
+    if len(plan) > 50:
+        print(f"  ... ({len(plan) - 50} more)")
+
+    if args.save_plan:
+        os.makedirs(os.path.dirname(args.save_plan), exist_ok=True) if os.path.dirname(args.save_plan) else None
+        with open(args.save_plan, "w") as f:
+            json.dump({name: scheme for name, scheme in plan}, f, indent=2)
+        print(f"Saved plan to {args.save_plan}")
+
+
+if __name__ == "__main__":
     main()
