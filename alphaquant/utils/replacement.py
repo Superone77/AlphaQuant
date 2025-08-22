@@ -5,35 +5,16 @@ import torch.nn as nn
 from ..modules.quant_linear import QuantLinear, QuantLinearConfig
 import json
 import fnmatch
+import torch
+from alphaquant.modules.quant_linear import QuantLinearConfig
+from alphaquant.quantizers.mxfp4 import MXFP4Quantizer, MXFP4Config
+from alphaquant.quantizers.mxfp8 import MXFP8Quantizer, MXFP8Config
 
 
 def _match(name: str, include: Iterable[str], exclude: Iterable[str]) -> bool:
     inc_ok = True if not include else any((k in name) or re.fullmatch(k, name) for k in include)
     exc_ok = not any((k in name) or re.fullmatch(k, name) for k in exclude)
     return inc_ok and exc_ok
-
-
-def replace_linear_with_quant(model: nn.Module,
-                              qcfg: QuantLinearConfig,
-                              include: Iterable[str] = (),
-                              exclude: Iterable[str] = (),
-                              dry_run: bool = False) -> List[str]:
-    """
-    Replace selected nn.Linear with QuantLinear.
-    - include/exclude: substrings or regex patterns on module qualified names
-    Returns list of replaced module names.
-    """
-    replaced = []
-    for name, module in list(model.named_modules()):
-        if isinstance(module, nn.Linear) and _match(name, include, exclude):
-            parent_name = name.rsplit('.', 1)[0] if '.' in name else ''
-            attr = name.split('.')[-1]
-            parent = model.get_submodule(parent_name) if parent_name else model
-            qlin = QuantLinear(module, qcfg)
-            if not dry_run:
-                setattr(parent, attr, qlin)
-            replaced.append(name)
-    return replaced
 
 
 def load_layer_config(json_path: str) -> Dict[str, Any]:
@@ -109,3 +90,72 @@ def summarize_config(cfg: Dict[str, Any]) -> str:
     for idx, ov in enumerate(overrides):
         lines.append(f"    {idx:02d}: pattern={ov.get('pattern')} fields={{" + ", ".join([f"{k}={v}" for k, v in ov.items() if k != 'pattern']) + "}}")
     return "\n".join(lines)
+
+
+def load_quantization_plan(plan_path: str) -> Dict[str, Dict[str, Any]]:
+    """Load quantization plan from JSON file."""
+    with open(plan_path, 'r') as f:
+        plan = json.load(f)
+    return plan
+
+
+def create_quantizer_from_scheme(scheme: Dict[str, Any], dtype: str) -> Tuple[Any, Any]:
+    """Create quantizer class and config from scheme dict."""
+    wq_scheme = scheme.get('wq', 'mxfp8')
+    aq_scheme = scheme.get('aq', 'mxfp8')
+    group_size = scheme.get('group_size', 32)
+    
+    # Map scheme names to quantizer classes
+    quantizer_map = {
+        'mxfp4': (MXFP4Quantizer, MXFP4Config),
+        'mxfp8': (MXFP8Quantizer, MXFP8Config),
+    }
+    
+    if wq_scheme not in quantizer_map:
+        raise ValueError(f"Unknown weight quantization scheme: {wq_scheme}")
+    if aq_scheme not in quantizer_map:
+        raise ValueError(f"Unknown activation quantization scheme: {aq_scheme}")
+    
+    WQ, WCfg = quantizer_map[wq_scheme]
+    AQ, ACfg = quantizer_map[aq_scheme]
+    
+    return (WQ, WCfg), (AQ, ACfg)
+
+
+def apply_layer_wise_quantization(model: Any, plan: Dict[str, Dict[str, Any]], dtype: str) -> List[str]:
+    """Apply layer-wise quantization based on the plan."""
+    replaced_modules = []
+    
+    for module_name, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear) and module_name in plan:
+            scheme = plan[module_name]
+            
+            # Create quantizer configs
+            (WQ, WCfg), (AQ, ACfg) = create_quantizer_from_scheme(scheme, dtype)
+            
+            # Create quantization config
+            qcfg = QuantLinearConfig(
+                weight_quantizer_cls=WQ,
+                weight_quantizer_cfg=WCfg(group_size=scheme.get('group_size', 32), dtype=dtype),
+                act_quantizer_cls=AQ,
+                act_quantizer_cfg=ACfg(group_size=scheme.get('group_size', 32), dtype=dtype),
+                bias=True
+            )
+            
+            # Replace the module
+            parent_name = module_name.rsplit('.', 1)[0] if '.' in module_name else ''
+            attr = module_name.split('.')[-1]
+            parent = model.get_submodule(parent_name) if parent_name else model
+            
+            # Create QuantLinear replacement
+            from alphaquant.modules.quant_linear import QuantLinear
+            qlin = QuantLinear(module.in_features, module.out_features, bias=module.bias is not None, qcfg = qcfg)
+            if module.bias is not None:
+                qlin.inner.bias.data = module.bias.data.clone()
+            qlin.inner.weight.data = module.weight.data.clone()
+            
+            setattr(parent, attr, qlin)
+            # print(f"Finished Quantization for {module_name} with {scheme} ")
+            replaced_modules.append(module_name)
+    
+    return replaced_modules

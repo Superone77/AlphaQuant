@@ -5,35 +5,14 @@ import torch
 
 
 @dataclass
-class QuantSchemeConfig:
-    """Base quantization scheme configuration container.
-
-    This is intentionally minimal and can be extended with scheme-specific fields.
-    """
-
-    name: str
-    wq: Optional[str] = None  # weight quant scheme
-    aq: Optional[str] = None  # activation quant scheme
-    group_size: Optional[int] = None
-    extra: Optional[Dict[str, Any]] = None
-
-    @staticmethod
-    def from_dict(config: Dict[str, Any], default_name: str = "custom") -> "QuantSchemeConfig":
-        name = config.get("name") or config.get("scheme") or default_name
-        wq = config.get("wq")
-        aq = config.get("aq")
-        group_size = config.get("group") or config.get("group_size")
-        extra = {k: v for k, v in config.items() if k not in {"name", "scheme", "wq", "aq", "group", "group_size", "pattern"}}
-        return QuantSchemeConfig(name=name, wq=wq, aq=aq, group_size=group_size, extra=extra or None)
-
-
-@dataclass
 class QuantizerConfig:
-    group_size: int = 64         # elements per scale (for weights); for activations use channel-first flatten groups
-    per_channel: bool = True     # if True for weights: per-output-channel then groupwise inside channel
-    symmetric: bool = True
-    dtype: str = "float16"       # compute dtype after dequant
+    name: str = "default"
+    group_size: int = 32         # elements per scale (for weights); for activations use channel-first flatten groups
+    wq: bool = True     # if True for weights: per-output-channel then groupwise inside channel
+    aq: bool = True
+    dtype: str = "bfloat16"       # compute dtype after dequant
     fake: bool = True            # if True, do fake-quant (quant->dequant on the fly)
+    extra:Dict[str, Any] = None
 
 class Observer:
     def reset(self):

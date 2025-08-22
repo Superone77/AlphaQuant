@@ -3,14 +3,13 @@ from dataclasses import dataclass
 import torch
 from .base import Quantizer, QuantizerConfig
 from typing import Any, Dict, Optional
-
-from .base import QuantSchemeConfig
+from .kernel.fp_torch import fp4_121_scaled
 
 
 @dataclass
-class MXFP4Config(QuantSchemeConfig):
-    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, extra: Optional[Dict[str, Any]] = None):
-        super().__init__(name="mxfp4", wq=wq, aq=aq, group_size=group_size, extra=extra)
+class MXFP4Config(QuantizerConfig):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, extra: Optional[Dict[str, Any]] = None, dtype = "bfloat16"):
+        super().__init__(name="mxfp4", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
 
 class MXFP4Quantizer(Quantizer):
     """
@@ -33,17 +32,8 @@ class MXFP4Quantizer(Quantizer):
         return w, pad
 
     def quantize_weight(self, w: torch.Tensor):
-        cfg = self.cfg
-        device = w.device
-        out_ch, in_ch = w.shape
-        g = cfg.group_size
-        w_g = w.view(out_ch, in_ch // g, g)
-        maxv = w_g.abs().amax(dim=-1, keepdim=True)
-        scale = self._calc_scale_max(maxv, qmax=7)
-        qw = torch.clamp((w_g / scale).round_(), -8, 7).to(torch.int8)
-        # store dequantized for compute (simple path)
-        w_deq = (qw * scale).view_as(w).to(getattr(torch, cfg.dtype))
-        return w_deq, scale.squeeze(-1)  # scale shape: [out_ch, in_ch//g]
+        w_deq = fp4_121_scaled(w,scale_format="e8m0")
+        return w_deq
 
     def _from_range(self, lo: torch.Tensor, hi: torch.Tensor):
         maxv = torch.maximum(hi.abs(), lo.abs())
@@ -51,11 +41,8 @@ class MXFP4Quantizer(Quantizer):
         self.zero = None
 
     def quantize_activation(self, x: torch.Tensor) -> torch.Tensor:
-        # fake quant with broadcasting scale from observer (per-feature along last dim)
-        assert self.scale is not None
-        scale = self.scale
-        # Bring scale to last-dim broadcast if necessary
-        while scale.dim() < x.dim():
-            scale = scale.unsqueeze(0)
-        xq = torch.clamp((x / scale).round_(), -8, 7)
-        return (xq * scale).to(getattr(torch, self.cfg.dtype))
+        if self.scale == None:
+            x_deq = fp4_121_scaled(x,scale_format="e8m0")
+            return x_deq
+        else:
+            raise ValueError(f"do not support static quantization for activation")
