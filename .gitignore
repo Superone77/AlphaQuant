@@ -10,3 +10,5 @@ wandb/
 docs/
 search_result/
 .DS_Store
+*.png
+*.csv
