@@ -56,6 +56,7 @@ def main():
     print(f"Quantized {len(replaced)} modules")
     
     # Run evaluation
+    args.tasks = args.tasks.split(",")
     print(f"Running evaluation on tasks: {args.tasks}")
     tasks_evaluate(model = lm, tasks = args.tasks, batch_size = args.batch_size,device=args.device)
     # results = evaluator.simple_evaluate(

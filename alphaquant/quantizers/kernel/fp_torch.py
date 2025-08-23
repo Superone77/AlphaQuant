@@ -143,9 +143,9 @@ def mxfp8_torch(x:torch.Tensor,
 
     scale = torch.where((0 < scale) * (scale < torch.inf), scale, 1.0)
     if scaled_value_format == "e4m3":
-        x_fp8_abs = (x_abs * scale).to(torch.float8_e4m3fn) / scale
+        x_fp8_abs = (x_abs * scale).to(torch.float8_e4m3fn).to(x.dtype) / scale
     elif scaled_value_format == "e5m2":
-        x_fp8_abs = (x_abs * scale).to(torch.float8_e5m2fn) / scale
+        x_fp8_abs = (x_abs * scale).to(torch.float8_e5m2).to(x.dtype) / scale
     return (sign * x_fp8_abs).to(x.dtype)
 
 
@@ -154,5 +154,5 @@ if __name__ == '__main__':
     device = torch.device('cpu')
 
     t = torch.randn([2, 32]).to(device)
-    t_q = fake_quant_fp4(t, stochastic_rounding=True)
+    t_q = mxfp8_torch(t, stochastic_rounding=True)
     print(t_q)

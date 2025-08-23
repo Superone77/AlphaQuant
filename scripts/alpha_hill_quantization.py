@@ -73,7 +73,7 @@ def create_quantization_config(alpha_results: Dict[str, Any],
         "default": {
             "wq": "mxfp8",
             "aq": "mxfp8", 
-            "group_size": 128
+            "group_size": 32
         },
         "overrides": []
     }
@@ -83,13 +83,19 @@ def create_quantization_config(alpha_results: Dict[str, Any],
     total_count = len(sorted_layers)
     
     for name, result in sorted_layers:
+        if "lm_head" in name or "mlp.gate" in name:
+            config["overrides"].append({
+                "pattern": name,
+                "skip": True
+            })
+            continue
         if result['alpha'] >= threshold:
             # Use mxfp4 for high alpha layers
             config["overrides"].append({
                 "pattern": name,
                 "wq": "mxfp4",
                 "aq": "mxfp4",
-                "group_size": 64,
+                "group_size": 32,
                 "alpha_hill": result['alpha'],
                 "category": result['category']
             })
