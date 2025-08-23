@@ -170,7 +170,7 @@ def safe_get_in_out_features(module: nn.Linear):
 
 
 def alpha_hill_from_model(
-    W: torch.Tensor,
+    model: nn.Module,
     k: Optional[int] = None,
     k_frac: float = 0.1,
     eps: float = 1e-12,
@@ -178,18 +178,92 @@ def alpha_hill_from_model(
     q_mult: float = 2.0,
     force_cpu_svd: bool = True,
     use_eig: bool = False,
-) -> Tuple[float, int, int, str]:
+    filter_regex: Optional[str] = None,
+) -> dict:
     """Compute PL_Alpha_Hill for all weights in a model.
 
+    Args:
+        model: The PyTorch model to analyze
+        k: Number of top eigenvalues to use (if None, uses k_frac)
+        k_frac: Fraction of eigenvalues to use if k is None
+        eps: Small value to avoid log(0)
+        use_lowrank: Whether to use low-rank SVD approximation
+        q_mult: Multiplier for low-rank SVD rank estimation
+        force_cpu_svd: Whether to force SVD computation on CPU
+        use_eig: Whether to use eigendecomposition instead of SVD
+        filter_regex: Optional regex pattern to filter layer names
+
     Returns:
-        alpha: float (nan if not computable)
-        k_used: int
-        n_eigs_used: int
-        method: str  in {"svd_full", "svd_lowrank", "eig_full", "svd_full_fallback"}
+        Dictionary with layer names as keys and alpha hill results as values.
+        Each value is a dict containing: alpha, k_used, n_eigs, method, shape, category
     """
-
+    results = {}
     
-
+    # Compile regex if provided
+    regex = re.compile(filter_regex) if filter_regex else None
+    
+    for name, module in iter_linear_modules(model):
+        # Apply regex filter if provided
+        if regex and not regex.search(name):
+            continue
+            
+        # Get weight tensor
+        if not hasattr(module, 'weight') or module.weight is None:
+            continue
+            
+        weight = module.weight.detach().contiguous()
+        
+        # Get layer information
+        out_features, in_features = safe_get_in_out_features(module)
+        shape = (out_features, in_features)
+        category = categorize(name)
+        
+        try:
+            # Compute alpha hill
+            alpha, k_used, n_eigs, method = alpha_hill_from_weight(
+                weight,
+                k=k,
+                k_frac=k_frac,
+                eps=eps,
+                use_lowrank=use_lowrank,
+                q_mult=q_mult,
+                force_cpu_svd=force_cpu_svd,
+                use_eig=use_eig,
+            )
+            
+            # Store results
+            results[name] = {
+                'alpha': alpha,
+                'k_used': k_used,
+                'n_eigs': n_eigs,
+                'method': method,
+                'shape': shape,
+                'category': category,
+                'out_features': out_features,
+                'in_features': in_features,
+                'numel': int(weight.numel()),
+                'dtype': str(weight.dtype).replace("torch.", ""),
+                'device': str(weight.device)
+            }
+            
+        except Exception as e:
+            # Handle errors gracefully
+            results[name] = {
+                'alpha': float('nan'),
+                'k_used': k or -1,
+                'n_eigs': -1,
+                'method': 'failed',
+                'shape': shape,
+                'category': category,
+                'out_features': out_features,
+                'in_features': in_features,
+                'numel': int(weight.numel()),
+                'dtype': str(weight.dtype).replace("torch.", ""),
+                'device': str(weight.device),
+                'error': f"{type(e).__name__}: {e}"
+            }
+    
+    return results
 
 
 if __name__ == '__main__':

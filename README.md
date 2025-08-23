@@ -75,3 +75,24 @@ python scripts/quantize_model.py \
   --layer-config configs/olmoe_mixed_quant.json \
   --save-plan ./plans/olmoe_mixed_expanded.json
 ```
+
+# 基本使用：30% 的层使用 mxfp4
+python scripts/alpha_hill_quantization.py \
+    --model "microsoft/DialoGPT-medium" \
+    --mxfp4-ratio 0.3 \
+    --output-config "configs/dialogue_alpha_quant.json"
+
+# 指定手动阈值
+python scripts/alpha_hill_quantization.py \
+    --model "microsoft/DialoGPT-medium" \
+    --alpha-threshold 2.5 \
+    --output-config "configs/dialogue_alpha_quant.json" \
+    --output-csv "results/alpha_hill_results.csv"
+
+# 使用 GPU 加速
+python scripts/alpha_hill_quantization.py \
+    --model "microsoft/DialoGPT-medium" \
+    --device cuda \
+    --dtype fp16 \
+    --mxfp4-ratio 0.4 \
+    --output-config "configs/dialogue_alpha_quant.json"
