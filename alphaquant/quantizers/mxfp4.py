@@ -1,9 +1,10 @@
+import os
 from __future__ import annotations
 from dataclasses import dataclass
 import torch
 from .base import Quantizer, QuantizerConfig
 from typing import Any, Dict, Optional
-from .kernel.fp_torch import fp4_121_scaled
+from .kernel.fp_torch import fp4_121_scaled, fake_quant_mxfp4
 
 
 @dataclass
@@ -42,7 +43,10 @@ class MXFP4Quantizer(Quantizer):
 
     def quantize_activation(self, x: torch.Tensor) -> torch.Tensor:
         if self.scale == None:
-            x_deq = fp4_121_scaled(x,scale_format="e8m0")
+            if os.environ['TRITON_MXFP4']='1':
+                x_deq = fake_quant_mxfp4(x)
+            else:
+                x_deq = fp4_121_scaled(x,scale_format="e8m0")
             return x_deq
         else:
             raise ValueError(f"do not support static quantization for activation")
