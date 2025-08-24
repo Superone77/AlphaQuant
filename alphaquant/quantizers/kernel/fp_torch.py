@@ -1,5 +1,7 @@
 import torch
-from .nvfp4_triton import nvfp4_forward   
+from .nvfp4_triton import nvfp4_forward
+from .mxfp4_triton import mxfp4_forward
+from .mxfp8_triton import mxfp8_forward   
 
 
 def fp4_121_positive(x:torch.Tensor, stochastic_rounding:bool=False) -> torch.Tensor:
@@ -125,6 +127,29 @@ def fake_quant_fp4(x:torch.Tensor,
     x = nvfp4_forward(x, None, stochastic_rounding)
     
     return x
+
+
+def fake_quant_mxfp4(x:torch.Tensor, 
+                     stochastic_rounding:bool=False, 
+                     dim:int=-1, 
+                     format:str='fp4_e2m1',
+                     block_size:int=32, 
+                     scale_format:str='e8m0',
+                     grid:bool=False) -> torch.Tensor:
+    """
+    使用MXFP4 triton kernel进行量化
+    """
+    return mxfp4_forward(x, stochastic_rounding)
+
+
+def fake_quant_mxfp8(x:torch.Tensor, 
+                     stochastic_rounding:bool=False, 
+                     format:str='e4m3') -> torch.Tensor:
+    """
+    使用MXFP8 triton kernel进行量化
+    format: 'e4m3' 或 'e5m2'
+    """
+    return mxfp8_forward(x, format, stochastic_rounding)
 
 
 def mxfp8_torch(x:torch.Tensor, 
