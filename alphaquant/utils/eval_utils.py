@@ -63,6 +63,8 @@ def tasks_evaluate(model, tasks, batch_size = 4,device="cuda"):
         # sample = {task:[0,1,2,3]}
         result = evaluator.simple_evaluate(model=model,tasks=task,batch_size = batch_size,device=device)
         result_list.append(result)
+        print(make_table(result))
+    print("---------------final results-----------------")
     for result in result_list:
         print(make_table(result))
         
