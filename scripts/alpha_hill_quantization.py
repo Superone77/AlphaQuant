@@ -22,6 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dtype", type=str, default="fp32", help="fp32|fp16|bf16")
     parser.add_argument("--mxfp4-ratio", type=float, default=0.3, 
                        help="Ratio of layers to use mxfp4 (0.0-1.0)")
+    parser.add_argument("--bf16-ratio", type=float, default=0.0,
+                       help="Ratio of layers to keep as bf16 (skip quantization, 0.0-1.0)")
     parser.add_argument("--alpha-threshold", type=float, default=None,
                        help="Manual alpha threshold (if not provided, uses percentile)")
     parser.add_argument("--output-config", type=str, required=True,
@@ -36,17 +38,25 @@ def parse_args() -> argparse.Namespace:
 
 def create_quantization_config(alpha_results: Dict[str, Any], 
                               mxfp4_ratio: float = 0.3,
+                              bf16_ratio: float = 0.0,
                               alpha_threshold: float = None) -> Dict[str, Any]:
     """Create quantization configuration based on Alpha_Hill values.
     
     Args:
         alpha_results: Dictionary of Alpha_Hill results from alpha_hill_from_model
-        mxfp4_ratio: Target ratio of layers to use mxfp4
+        mxfp4_ratio: Target ratio of layers to use mxfp4 (high alpha)
+        bf16_ratio: Target ratio of layers to keep as bf16 (low alpha, skip quantization)
         alpha_threshold: Manual threshold for mxfp4 vs mxfp8 decision
         
     Returns:
         Quantization configuration dictionary
     """
+    # Validate ratios
+    total_ratio = mxfp4_ratio + bf16_ratio
+    if total_ratio > 1.0:
+        raise ValueError(f"Total ratio ({total_ratio:.2f}) cannot exceed 1.0. "
+                        f"mxfp4_ratio: {mxfp4_ratio:.2f}, bf16_ratio: {bf16_ratio:.2f}")
+    
     # Filter out failed computations and extract valid alpha values
     valid_results = {}
     for name, result in alpha_results.items():
@@ -60,13 +70,20 @@ def create_quantization_config(alpha_results: Dict[str, Any],
     sorted_layers = sorted(valid_results.items(), 
                           key=lambda x: x[1]['alpha'], reverse=True)
     
-    # Determine threshold
+    # Determine thresholds
     if alpha_threshold is not None:
-        threshold = alpha_threshold
+        # Manual threshold mode
+        mxfp4_threshold = alpha_threshold
+        bf16_threshold = alpha_threshold  # Will be adjusted based on bf16_ratio
     else:
-        # Use percentile-based threshold
+        # Percentile-based thresholds
         alpha_values = [result['alpha'] for result in valid_results.values()]
-        threshold = np.percentile(alpha_values, (1 - mxfp4_ratio) * 100)
+        
+        # mxfp4 threshold (top mxfp4_ratio %)
+        mxfp4_threshold = np.percentile(alpha_values, (1 - mxfp4_ratio) * 100)
+        
+        # bf16 threshold (bottom bf16_ratio %)
+        bf16_threshold = np.percentile(alpha_values, bf16_ratio * 100)
     
     # Create configuration
     config = {
@@ -78,8 +95,10 @@ def create_quantization_config(alpha_results: Dict[str, Any],
         "overrides": []
     }
     
-    # Add mxfp4 layers (high alpha)
+    # Count layers for each precision
     mxfp4_count = 0
+    bf16_count = 0
+    mxfp8_count = 0
     total_count = len(sorted_layers)
     
     for name, result in sorted_layers:
@@ -89,35 +108,52 @@ def create_quantization_config(alpha_results: Dict[str, Any],
                 "skip": True
             })
             continue
-        if result['alpha'] >= threshold:
+            
+        alpha = result['alpha']
+        
+        if alpha >= mxfp4_threshold:
             # Use mxfp4 for high alpha layers
             config["overrides"].append({
                 "pattern": name,
                 "wq": "mxfp4",
                 "aq": "mxfp4",
                 "group_size": 32,
-                "alpha_hill": result['alpha'],
+                "alpha_hill": alpha,
                 "category": result['category']
             })
             mxfp4_count += 1
+        elif alpha <= bf16_threshold:
+            # Keep as bf16 for low alpha layers (skip quantization)
+            config["overrides"].append({
+                "pattern": name,
+                "skip": True,
+                "alpha_hill": alpha,
+                "category": result['category']
+            })
+            bf16_count += 1
         else:
-            # Use mxfp8 for low alpha layers
+            # Use mxfp8 for medium alpha layers
             config["overrides"].append({
                 "pattern": name,
                 "wq": "mxfp8",
                 "aq": "mxfp8",
-                "group_size": 128,
-                "alpha_hill": result['alpha'],
+                "group_size": 32,
+                "alpha_hill": alpha,
                 "category": result['category']
             })
+            mxfp8_count += 1
     
     # Add summary to config
     config["summary"] = {
         "total_layers": total_count,
         "mxfp4_layers": mxfp4_count,
-        "mxfp8_layers": total_count - mxfp4_count,
+        "mxfp8_layers": mxfp8_count,
+        "bf16_layers": bf16_count,
         "mxfp4_ratio": mxfp4_count / total_count,
-        "alpha_threshold": threshold,
+        "mxfp8_ratio": mxfp8_count / total_count,
+        "bf16_ratio": bf16_count / total_count,
+        "mxfp4_threshold": mxfp4_threshold,
+        "bf16_threshold": bf16_threshold,
         "alpha_stats": {
             "min": min(r['alpha'] for r in valid_results.values()),
             "max": max(r['alpha'] for r in valid_results.values()),
@@ -164,8 +200,10 @@ def print_summary(alpha_results: Dict[str, Any], config: Dict[str, Any]) -> None
     print("="*60)
     print(f"Total layers analyzed: {summary['total_layers']}")
     print(f"Layers using mxfp4: {summary['mxfp4_layers']} ({summary['mxfp4_ratio']:.1%})")
-    print(f"Layers using mxfp8: {summary['mxfp8_layers']} ({summary['mxfp8_layers']/summary['total_layers']:.1%})")
-    print(f"Alpha threshold: {summary['alpha_threshold']:.4f}")
+    print(f"Layers using mxfp8: {summary['mxfp8_layers']} ({summary['mxfp8_ratio']:.1%})")
+    print(f"Layers keeping bf16: {summary['bf16_layers']} ({summary['bf16_ratio']:.1%})")
+    print(f"mxfp4 threshold: {summary['mxfp4_threshold']:.4f}")
+    print(f"bf16 threshold: {summary['bf16_threshold']:.4f}")
     
     print(f"\nAlpha statistics:")
     stats = summary['alpha_stats']
@@ -174,15 +212,20 @@ def print_summary(alpha_results: Dict[str, Any], config: Dict[str, Any]) -> None
     print(f"  Mean: {stats['mean']:.4f}")
     print(f"  Median: {stats['median']:.4f}")
     
-    # Show some examples
+    # Show some examples for each precision
     print(f"\nExample mxfp4 layers (high alpha):")
-    mxfp4_examples = [ov for ov in config["overrides"] if ov["wq"] == "mxfp4"][:5]
+    mxfp4_examples = [ov for ov in config["overrides"] if ov.get("wq") == "mxfp4"][:5]
     for ex in mxfp4_examples:
         print(f"  {ex['pattern']}: alpha={ex['alpha_hill']:.4f}, category={ex['category']}")
     
-    print(f"\nExample mxfp8 layers (low alpha):")
-    mxfp8_examples = [ov for ov in config["overrides"] if ov["wq"] == "mxfp8"][:5]
+    print(f"\nExample mxfp8 layers (medium alpha):")
+    mxfp8_examples = [ov for ov in config["overrides"] if ov.get("wq") == "mxfp8"][:5]
     for ex in mxfp8_examples:
+        print(f"  {ex['pattern']}: alpha={ex['alpha_hill']:.4f}, category={ex['category']}")
+    
+    print(f"\nExample bf16 layers (low alpha, kept original):")
+    bf16_examples = [ov for ov in config["overrides"] if ov.get("skip") == True and "lm_head" not in ov['pattern'] and "mlp.gate" not in ov['pattern']][:5]
+    for ex in bf16_examples:
         print(f"  {ex['pattern']}: alpha={ex['alpha_hill']:.4f}, category={ex['category']}")
 
 
@@ -194,6 +237,8 @@ def main() -> None:
     
     print(f"Loading model: {args.model}")
     print(f"Target mxfp4 ratio: {args.mxfp4_ratio:.1%}")
+    print(f"Target bf16 ratio: {args.bf16_ratio:.1%}")
+    print(f"Target mxfp8 ratio: {1.0 - args.mxfp4_ratio - args.bf16_ratio:.1%}")
     
     # Load model
     model = load_hf_causal_lm(args.model, device=args.device, dtype=args.dtype)
@@ -215,6 +260,7 @@ def main() -> None:
     config = create_quantization_config(
         alpha_results, 
         mxfp4_ratio=args.mxfp4_ratio,
+        bf16_ratio=args.bf16_ratio,
         alpha_threshold=args.alpha_threshold
     )
     
