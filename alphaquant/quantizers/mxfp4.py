@@ -1,5 +1,5 @@
-import os
 from __future__ import annotations
+import os
 from dataclasses import dataclass
 import torch
 from .base import Quantizer, QuantizerConfig
