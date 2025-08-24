@@ -108,9 +108,41 @@ class AdaptiveQuantizationSearch:
             from alphaquant.utils.replacement import apply_layer_wise_quantization
             quantized_model = apply_layer_wise_quantization(self.model, quant_config, self.dtype)
             
+            # 检查量化后的模型
+            if quantized_model is None:
+                print("警告: 量化后的模型为 None，使用原始模型")
+                quantized_model = self.model
+            
+            # 确保模型在正确的设备上
+            if hasattr(quantized_model, 'to'):
+                quantized_model = quantized_model.to(self.device)
+            
+            # 获取模型的 tokenizer
+            tokenizer = None
+            if hasattr(self.model, 'config') and hasattr(self.model.config, 'tokenizer'):
+                tokenizer = self.model.config.tokenizer
+            elif hasattr(self.model, 'tokenizer'):
+                tokenizer = self.model.tokenizer
+            
             # 创建 HFLM 包装器
-            lm = HFLM(pretrained=None, model=quantized_model, device=self.device, 
-                      dtype=self.dtype, batch_size=self.batch_size)
+            try:
+                lm = HFLM(
+                    pretrained=None, 
+                    model=quantized_model, 
+                    tokenizer=tokenizer,
+                    device=self.device, 
+                    dtype=self.dtype, 
+                    batch_size=self.batch_size
+                )
+            except Exception as hflm_error:
+                print(f"HFLM 初始化失败: {hflm_error}")
+                # 尝试使用更简单的初始化方式
+                lm = HFLM(
+                    pretrained=None, 
+                    model=quantized_model, 
+                    device=self.device, 
+                    batch_size=self.batch_size
+                )
             
             # 运行 wikitext 评估
             results = evaluator.simple_evaluate(
@@ -126,6 +158,8 @@ class AdaptiveQuantizationSearch:
             
         except Exception as e:
             print(f"PPL 评估失败: {e}")
+            import traceback
+            traceback.print_exc()
             return float('inf')
     
     def create_quantization_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
