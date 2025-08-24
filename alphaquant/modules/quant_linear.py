@@ -41,7 +41,7 @@ class QuantLinear(nn.Module if nn is not None else object):
 
 
     def forward(self, x):  # type: ignore[override]
-        q_x = self.act_quantizer.quantize_activation(x)
+        q_x = self.act_quantizer.quantize_activation(x.T).T
         return self.inner(q_x)
 
     def extra_repr(self) -> str:
