@@ -43,7 +43,7 @@ class MXFP4Quantizer(Quantizer):
 
     def quantize_activation(self, x: torch.Tensor) -> torch.Tensor:
         if self.scale == None:
-            if os.environ['TRITON_MXFP4'] == 1:
+            if os.environ['USE_TRITON_MXFP4'] == 1:
                 x_deq = fake_quant_mxfp4(x)
             else:
                 x_deq = fp4_121_scaled(x,scale_format="e8m0")
