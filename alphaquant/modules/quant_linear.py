@@ -41,8 +41,10 @@ class QuantLinear(nn.Module if nn is not None else object):
 
 
     def forward(self, x):  # type: ignore[override]
-        q_x = self.act_quantizer.quantize_activation(x.T).T
-        return self.inner(q_x)
+        ori_shape = x.shape
+        x_2d = x.reshape(-1, ori_shape[-1])
+        q_x = self.act_quantizer.quantize_activation(x_2d.T)
+        return self.inner(q_x.T.reshape(ori_shape))
 
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.use_bias}, quant={self.quant_kwargs}"

@@ -9,6 +9,7 @@ import torch
 from alphaquant.modules.quant_linear import QuantLinearConfig
 from alphaquant.quantizers.mxfp4 import MXFP4Quantizer, MXFP4Config
 from alphaquant.quantizers.mxfp8 import MXFP8Quantizer, MXFP8Config
+from alphaquant.quantizers.base import NoQuantizer, NoQuantConfig
 
 
 def _match(name: str, include: Iterable[str], exclude: Iterable[str]) -> bool:
@@ -101,14 +102,15 @@ def load_quantization_plan(plan_path: str) -> Dict[str, Dict[str, Any]]:
 
 def create_quantizer_from_scheme(scheme: Dict[str, Any], dtype: str) -> Tuple[Any, Any]:
     """Create quantizer class and config from scheme dict."""
-    wq_scheme = scheme.get('wq', 'mxfp8')
-    aq_scheme = scheme.get('aq', 'mxfp8')
+    wq_scheme = scheme.get('wq', 'bf16')
+    aq_scheme = scheme.get('aq', 'bf16')
     group_size = scheme.get('group_size', 32)
     
     # Map scheme names to quantizer classes
     quantizer_map = {
         'mxfp4': (MXFP4Quantizer, MXFP4Config),
         'mxfp8': (MXFP8Quantizer, MXFP8Config),
+        'bf16': (NoQuantizer, NoQuantConfig)
     }
     
     if wq_scheme not in quantizer_map:

@@ -51,3 +51,30 @@ class Quantizer:
         raise NotImplementedError
     def _from_range(self, lo: torch.Tensor, hi: torch.Tensor):
         raise NotImplementedError
+
+
+@dataclass
+class NoQuantConfig(QuantizerConfig):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, extra: Optional[Dict[str, Any]] = None,dtype="bfloat16"):
+        super().__init__(name="bf16", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
+
+class NoQuantizer(Quantizer):
+    """Minimal stand-in for MXFP8: symmetric int8 with group-wise scale."""
+    def __init__(self, cfg: NoQuantConfig):
+        super().__init__(cfg)
+
+    @staticmethod
+    def _calc_scale_max(max_val: torch.Tensor, qmax: int) -> torch.Tensor:
+        return (max_val.clamp(min=1e-8)) / qmax
+
+    def quantize_weight(self, w: torch.Tensor):
+        return w
+
+    def _from_range(self, lo: torch.Tensor, hi: torch.Tensor):
+        maxv = torch.maximum(hi.abs(), lo.abs())
+        self.scale = self._calc_scale_max(maxv, qmax=127)
+        self.zero = None
+
+    def quantize_activation(self, x: torch.Tensor) -> torch.Tensor:
+        return x
+        

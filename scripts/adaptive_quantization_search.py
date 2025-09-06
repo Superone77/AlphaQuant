@@ -130,7 +130,6 @@ class AdaptiveQuantizationSearch:
                     pretrained=None, 
                     model=quantized_model, 
                     tokenizer=tokenizer,
-                    device=self.device, 
                     dtype=self.dtype, 
                     batch_size=self.batch_size
                 )
@@ -140,7 +139,6 @@ class AdaptiveQuantizationSearch:
                 lm = HFLM(
                     pretrained=None, 
                     model=quantized_model, 
-                    device=self.device, 
                     batch_size=self.batch_size
                 )
             
