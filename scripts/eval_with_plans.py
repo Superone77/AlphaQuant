@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--plan', required=True, help='Path to quantization plan JSON file')
     parser.add_argument('--tasks', default='gsm8k', help='Comma-separated list of tasks (default: gsm8k)')
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size for evaluation')
-    parser.add_argument('--device', default='cuda', help='Device to use (cuda/cpu)')
+    parser.add_argument('--device', default='cuda:0', help='Device to use (cuda/cpu)')
     parser.add_argument('--dtype', default='bfloat16', help='Model dtype (bfloat16/float16/float32)')
     parser.add_argument('--dry_run', action='store_true', help='Only show quantization plan without applying')
     
