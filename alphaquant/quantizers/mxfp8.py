@@ -32,6 +32,8 @@ class MXFP8Quantizer(Quantizer):
 
     def quantize_activation(self, x: torch.Tensor) -> torch.Tensor:
         if self.scale == None:
+            if x.numel() == 0:
+                return x
             x_deq = mxfp8_torch(x, scaled_value_format = "e5m2")
             return x_deq
         else:

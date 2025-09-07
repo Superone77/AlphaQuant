@@ -9,6 +9,14 @@ import torch
 from alphaquant.modules.quant_linear import QuantLinearConfig
 from alphaquant.quantizers.mxfp4 import MXFP4Quantizer, MXFP4Config
 from alphaquant.quantizers.mxfp8 import MXFP8Quantizer, MXFP8Config
+from alphaquant.quantizers.fp4 import FP4Quantizer, FP4Config
+from alphaquant.quantizers.fp8 import FP8Quantizer, FP8Config
+from alphaquant.quantizers.int_quantizers import (
+    INT2Quantizer, INT2Config,
+    INT4Quantizer, INT4Config,
+    INT6Quantizer, INT6Config,
+    INT8Quantizer, INT8Config
+)
 from alphaquant.quantizers.base import NoQuantizer, NoQuantConfig
 
 
@@ -110,6 +118,12 @@ def create_quantizer_from_scheme(scheme: Dict[str, Any], dtype: str) -> Tuple[An
     quantizer_map = {
         'mxfp4': (MXFP4Quantizer, MXFP4Config),
         'mxfp8': (MXFP8Quantizer, MXFP8Config),
+        'fp4': (FP4Quantizer, FP4Config),
+        'fp8': (FP8Quantizer, FP8Config),
+        'int2': (INT2Quantizer, INT2Config),
+        'int4': (INT4Quantizer, INT4Config),
+        'int6': (INT6Quantizer, INT6Config),
+        'int8': (INT8Quantizer, INT8Config),
         'bf16': (NoQuantizer, NoQuantConfig)
     }
     
