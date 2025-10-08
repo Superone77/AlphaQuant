@@ -1,5 +1,40 @@
 # AlphaQuant
 
+## 🚀 Features
+
+- **Alpha-Hill Quantization**: Adaptive mixed-precision quantization based on eigenvalue distribution
+- **Precision Analysis**: Analyze how different numerical precisions affect layer sensitivity
+- **Layer-wise Configuration**: Flexible per-layer quantization schemes via JSON config
+- **Multiple Quantizers**: MXFP4/8, FP4/8, INT2/4/6/8 support
+- **MoE Optimization**: Specialized support for Mixture-of-Experts models
+
+---
+
+## 📊 NEW: Precision Analysis
+
+Analyze how different precisions (FP32, FP16, BF16) affect Alpha-Hill values across all layers:
+
+```bash
+# Analyze Llama 3.1 8B across multiple precisions
+python scripts/analyze_precision_alpha_hill.py \
+  --model meta-llama/Llama-3.1-8B \
+  --precisions fp32,fp16,bf16 \
+  --device cuda \
+  --output-dir ./results/llama31_precision
+```
+
+**Outputs:**
+- ✅ Per-layer Alpha-Hill values at each precision (CSV)
+- ✅ Bar charts for each layer showing precision sensitivity
+- ✅ Statistical summaries and distribution plots
+- ✅ Quantization recommendations based on precision sensitivity
+
+**Quick Start:** See [`PRECISION_ANALYSIS_QUICKSTART.md`](PRECISION_ANALYSIS_QUICKSTART.md) for detailed guide.
+
+---
+
+## 📖 Usage
+
 ### 1) Quantize & calibrate
 
 ```bash

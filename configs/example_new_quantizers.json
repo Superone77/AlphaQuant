@@ -1,0 +1,30 @@
+{
+  "default": {
+    "wq": "int8",
+    "aq": "int8", 
+    "group_size": 32
+  },
+  "overrides": [
+    {
+      "pattern": "model.layers.0.*",
+      "wq": "int4",
+      "aq": "int8"
+    },
+    {
+      "pattern": "model.layers.*.attention.*",
+      "wq": "fp8",
+      "aq": "fp8",
+      "group_size": 64
+    },
+    {
+      "pattern": "model.layers.*.mlp.*",
+      "wq": "int6",
+      "aq": "int8"
+    },
+    {
+      "pattern": "model.layers.*.norm.*",
+      "wq": "fp4",
+      "aq": "fp4"
+    }
+  ]
+}
