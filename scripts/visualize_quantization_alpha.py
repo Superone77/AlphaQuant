@@ -20,16 +20,21 @@ def plot_layer_bar_chart(df_row: pd.Series, quant_formats: List[str], output_pat
     layer_name = df_row['layer_name']
     alphas = [df_row[f'alpha_{fmt}'] for fmt in quant_formats]
     
+    # 限制柱子高度不超过 10，但保留原始值用于显示
+    alphas_clamped = [min(a, 10.0) if not np.isnan(a) else a for a in alphas]
+    
     fig, ax = plt.subplots(figsize=(10, 6))
     colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(quant_formats)))
-    bars = ax.bar(quant_formats, alphas, color=colors, alpha=0.8, edgecolor='black')
+    bars = ax.bar(quant_formats, alphas_clamped, color=colors, alpha=0.8, edgecolor='black')
     
-    # 在柱子上添加数值
-    for bar, alpha in zip(bars, alphas):
-        height = bar.get_height()
-        if not np.isnan(height):
-            ax.text(bar.get_x() + bar.get_width() / 2., height,
-                   f'{alpha:.3f}', ha='center', va='bottom', 
+    # 在柱子上添加数值（显示原始值，但位置在 min(alpha, 10)）
+    for bar, alpha_original, alpha_clamped in zip(bars, alphas, alphas_clamped):
+        if not np.isnan(alpha_clamped):
+            # 文本位置在柱子顶部（最高 10）
+            text_y = alpha_clamped
+            # 显示原始值
+            ax.text(bar.get_x() + bar.get_width() / 2., text_y,
+                   f'{alpha_original:.3f}', ha='center', va='bottom', 
                    fontsize=9, fontweight='bold')
     
     ax.set_xlabel('Quantization Format', fontsize=12, fontweight='bold')
@@ -219,7 +224,7 @@ def main():
     parser.add_argument("--output-dir", type=str, default=None, 
                        help="输出目录 (默认: CSV 所在目录)")
     parser.add_argument("--quant-formats", type=str,
-                       default="bf16,mxfp8,mxfp4,fp8,fp4,int8,int6,int4",
+                       default="bf16,mxfp8,mxfp4,fp8,fp4,int8,int6,int4,int3,int2",
                        help="量化格式列表")
     parser.add_argument("--skip-individual", action='store_true',
                        help="跳过单层图表生成")

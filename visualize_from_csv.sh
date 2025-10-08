@@ -6,7 +6,7 @@ set -e
 # 配置
 CSV_FILE="./results/llama31_8b_quantization_alpha/quantization_alpha_results.csv"
 OUTPUT_DIR="./results/llama31_8b_quantization_alpha"
-QUANT_FORMATS="bf16,mxfp8,mxfp4,fp8,fp4,int8,int6,int4"
+QUANT_FORMATS="bf16,mxfp8,mxfp4,fp8,fp4,int8,int6,int4,int3,int2"
 
 echo "=================================================="
 echo "从 CSV 生成可视化"

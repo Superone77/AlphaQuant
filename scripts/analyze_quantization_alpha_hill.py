@@ -122,19 +122,24 @@ def plot_layer_bar_chart(
     """Create bar chart for a single layer showing alpha across quantization formats."""
     alphas = [quant_results[fmt]['alpha'] for fmt in quant_formats]
     
+    # 限制柱子高度不超过 10，但保留原始值用于显示
+    alphas_clamped = [min(a, 10.0) if not np.isnan(a) else a for a in alphas]
+    
     fig, ax = plt.subplots(figsize=(10, 6))
     
     colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(quant_formats)))
-    bars = ax.bar(quant_formats, alphas, color=colors, alpha=0.8, edgecolor='black')
+    bars = ax.bar(quant_formats, alphas_clamped, color=colors, alpha=0.8, edgecolor='black')
     
-    # Add value labels on bars
-    for bar, alpha in zip(bars, alphas):
-        height = bar.get_height()
-        if not np.isnan(height):
+    # Add value labels on bars (显示原始值，但位置在 min(alpha, 10))
+    for bar, alpha_original, alpha_clamped in zip(bars, alphas, alphas_clamped):
+        if not np.isnan(alpha_clamped):
+            # 文本位置在柱子顶部（最高 10）
+            text_y = alpha_clamped
+            # 显示原始值
             ax.text(
                 bar.get_x() + bar.get_width() / 2.,
-                height,
-                f'{alpha:.3f}',
+                text_y,
+                f'{alpha_original:.3f}',
                 ha='center',
                 va='bottom',
                 fontsize=9,
@@ -178,7 +183,7 @@ def main():
     parser.add_argument(
         "--quant-formats",
         type=str,
-        default="bf16,mxfp8,mxfp4,fp8,fp4,int8,int6,int4",
+        default="bf16,mxfp8,mxfp4,fp8,fp4,int8,int6,int4,int3,int2",
         help="Comma-separated list of quantization formats"
     )
     parser.add_argument(
