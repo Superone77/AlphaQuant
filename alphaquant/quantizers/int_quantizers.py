@@ -4,7 +4,7 @@ import torch
 from .base import Quantizer, QuantizerConfig
 from typing import Any, Dict, Optional
 from .kernel.int_torch import (
-    fake_quant_int2, fake_quant_int4, fake_quant_int6, fake_quant_int8
+    fake_quant_int2, fake_quant_int3, fake_quant_int4, fake_quant_int6, fake_quant_int8
 )
 
 
@@ -17,6 +17,14 @@ class INT2Config(QuantizerConfig):
     def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, 
                  extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True):
         super().__init__(name="int2", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
+        self.symmetric = symmetric
+
+
+@dataclass
+class INT3Config(QuantizerConfig):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, 
+                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True):
+        super().__init__(name="int3", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
         self.symmetric = symmetric
 
 
@@ -116,6 +124,16 @@ class INT2Quantizer(BaseIntQuantizer):
     
     def _quantize_kernel(self, x: torch.Tensor, stochastic_rounding: bool = False, symmetric: bool = True):
         return fake_quant_int2(x, stochastic_rounding, symmetric)
+
+
+class INT3Quantizer(BaseIntQuantizer):
+    """INT3 quantizer (3-bit integer quantization)."""
+    
+    def __init__(self, cfg: INT3Config):
+        super().__init__(cfg, qmin=-4 if cfg.symmetric else 0, qmax=3 if cfg.symmetric else 7)
+    
+    def _quantize_kernel(self, x: torch.Tensor, stochastic_rounding: bool = False, symmetric: bool = True):
+        return fake_quant_int3(x, stochastic_rounding, symmetric)
 
 
 class INT4Quantizer(BaseIntQuantizer):

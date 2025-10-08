@@ -13,6 +13,7 @@ from alphaquant.quantizers.fp4 import FP4Quantizer, FP4Config
 from alphaquant.quantizers.fp8 import FP8Quantizer, FP8Config
 from alphaquant.quantizers.int_quantizers import (
     INT2Quantizer, INT2Config,
+    INT3Quantizer, INT3Config,
     INT4Quantizer, INT4Config,
     INT6Quantizer, INT6Config,
     INT8Quantizer, INT8Config
@@ -121,6 +122,7 @@ def create_quantizer_from_scheme(scheme: Dict[str, Any], dtype: str) -> Tuple[An
         'fp4': (FP4Quantizer, FP4Config),
         'fp8': (FP8Quantizer, FP8Config),
         'int2': (INT2Quantizer, INT2Config),
+        'int3': (INT3Quantizer, INT3Config),
         'int4': (INT4Quantizer, INT4Config),
         'int6': (INT6Quantizer, INT6Config),
         'int8': (INT8Quantizer, INT8Config),

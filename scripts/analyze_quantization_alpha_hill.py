@@ -33,6 +33,8 @@ from alphaquant.quantizers.mxfp8 import MXFP8Quantizer, MXFP8Config
 from alphaquant.quantizers.fp4 import FP4Quantizer, FP4Config
 from alphaquant.quantizers.fp8 import FP8Quantizer, FP8Config
 from alphaquant.quantizers.int_quantizers import (
+    INT2Quantizer, INT2Config,
+    INT3Quantizer, INT3Config,
     INT4Quantizer, INT4Config,
     INT6Quantizer, INT6Config,
     INT8Quantizer, INT8Config
@@ -50,6 +52,8 @@ def apply_quantization(weight: torch.Tensor, quant_format: str) -> torch.Tensor:
         'int8': (INT8Quantizer, INT8Config),
         'int6': (INT6Quantizer, INT6Config),
         'int4': (INT4Quantizer, INT4Config),
+        'int3': (INT3Quantizer, INT3Config),
+        'int2': (INT2Quantizer, INT2Config),
     }
     
     if quant_format == 'bf16':

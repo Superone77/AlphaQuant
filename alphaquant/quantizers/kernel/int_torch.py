@@ -44,6 +44,48 @@ def fake_quant_int2(x: torch.Tensor,
     return x_dequant
 
 
+def fake_quant_int3(x: torch.Tensor, 
+                   stochastic_rounding: bool = False,
+                   symmetric: bool = True) -> torch.Tensor:
+    """
+    Fake quantize to INT3 (3-bit integer).
+    
+    Args:
+        x: Input tensor
+        stochastic_rounding: Whether to use stochastic rounding
+        symmetric: Whether to use symmetric quantization (range: [-4, 3] vs [0, 7])
+    """
+    if symmetric:
+        qmin, qmax = -4, 3
+    else:
+        qmin, qmax = 0, 7
+    
+    # Calculate scale and zero point
+    x_min = x.min()
+    x_max = x.max()
+    
+    if symmetric:
+        scale = torch.max(x_max.abs(), x_min.abs()) / qmax
+        zero_point = 0
+    else:
+        scale = (x_max - x_min) / (qmax - qmin)
+        zero_point = qmin - x_min / scale
+    
+    # Quantize
+    x_scaled = x / scale + zero_point
+    
+    if stochastic_rounding:
+        noise = torch.rand_like(x_scaled) - 0.5
+        x_scaled = x_scaled + noise
+    
+    x_quant = torch.clamp(torch.round(x_scaled), qmin, qmax)
+    
+    # Dequantize
+    x_dequant = (x_quant - zero_point) * scale
+    
+    return x_dequant
+
+
 def fake_quant_int4(x: torch.Tensor, 
                    stochastic_rounding: bool = False,
                    symmetric: bool = True) -> torch.Tensor:
@@ -330,7 +372,7 @@ if __name__ == '__main__':
     print("Original tensor:", x[0, :8])
     
     # Test INT quantizers
-    for bits in [2, 4, 6, 8]:
+    for bits in [2, 3, 4, 6, 8]:
         quant_func = globals()[f'fake_quant_int{bits}']
         x_quant = quant_func(x, stochastic_rounding=False)
         print(f"INT{bits} quantized:", x_quant[0, :8])
