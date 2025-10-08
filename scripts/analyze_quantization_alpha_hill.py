@@ -144,6 +144,7 @@ def plot_layer_bar_chart(
     ax.set_xlabel('Quantization Format', fontsize=12, fontweight='bold')
     ax.set_ylabel('Alpha-Hill Value', fontsize=12, fontweight='bold')
     ax.set_title(f'Alpha-Hill: {layer_name}', fontsize=13, fontweight='bold')
+    ax.set_ylim(0, 10)  # 设置 y 轴上限为 10
     ax.grid(True, alpha=0.3, axis='y')
     plt.xticks(rotation=45, ha='right')
     

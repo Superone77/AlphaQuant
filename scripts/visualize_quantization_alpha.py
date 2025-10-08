@@ -35,6 +35,7 @@ def plot_layer_bar_chart(df_row: pd.Series, quant_formats: List[str], output_pat
     ax.set_xlabel('Quantization Format', fontsize=12, fontweight='bold')
     ax.set_ylabel('Alpha-Hill Value', fontsize=12, fontweight='bold')
     ax.set_title(f'Alpha-Hill: {layer_name}', fontsize=13, fontweight='bold')
+    ax.set_ylim(0, 10)  # 设置 y 轴上限为 10
     ax.grid(True, alpha=0.3, axis='y')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
@@ -64,6 +65,7 @@ def plot_overall_distribution(df: pd.DataFrame, quant_formats: List[str], output
     ax.set_ylabel('Alpha-Hill Value', fontsize=12, fontweight='bold')
     ax.set_title('Alpha-Hill Distribution Across Quantization Formats', 
                 fontsize=14, fontweight='bold')
+    ax.set_ylim(0, 10)  # 设置 y 轴上限为 10
     ax.grid(True, alpha=0.3, axis='y')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
@@ -95,6 +97,7 @@ def plot_category_comparison(df: pd.DataFrame, quant_formats: List[str], output_
         ax.set_xticklabels(quant_formats, rotation=45, ha='right', fontsize=8)
         ax.set_ylabel('Mean Alpha-Hill', fontsize=10)
         ax.set_title(f'{category} ({len(cat_df)} layers)', fontsize=11, fontweight='bold')
+        ax.set_ylim(0, 10)  # 设置 y 轴上限为 10
         ax.grid(True, alpha=0.3, axis='y')
     
     # 隐藏多余的子图
