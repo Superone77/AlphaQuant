@@ -183,31 +183,85 @@ def fake_quant_fp4(x: torch.Tensor,
     """
     if format == 'e2m1':
         # FP4 E2M1: 1 sign + 2 exponent + 1 mantissa
-        # Range: approximately [-6, 6]
-        fp4_max = 6.0
+        # Representable values (positive): 0, 0.5, 1, 1.5, 2, 3, 4, 6
+        fp4_values = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], 
+                                  device=x.device, dtype=x.dtype)
     else:
         raise ValueError(f"Unsupported FP4 format: {format}")
     
     # Calculate scale
     x_abs = x.abs()
-    scale = fp4_max / x_abs.max()
-    scale = torch.clamp(scale, min=1e-8)
+    x_max = x_abs.max()
+    scale = fp4_values[-1] / x_max.clamp(min=1e-8)
     
     # Scale to FP4 range
     x_scaled = x * scale
+    x_sign = torch.sign(x_scaled)
+    x_abs_scaled = x_scaled.abs()
+    
+    # Quantize to nearest representable FP4 value
+    # Find nearest value in fp4_values for each element
+    diff = torch.abs(x_abs_scaled.unsqueeze(-1) - fp4_values.unsqueeze(0))
+    nearest_idx = torch.argmin(diff, dim=-1)
+    x_quant_abs = fp4_values[nearest_idx]
     
     if stochastic_rounding:
-        noise = torch.rand_like(x_scaled) - 0.5
-        x_scaled = x_scaled + noise
+        # For stochastic rounding, probabilistically round up/down
+        next_idx = torch.clamp(nearest_idx + 1, max=len(fp4_values) - 1)
+        prev_idx = torch.clamp(nearest_idx - 1, min=0)
+        
+        # Randomly choose between nearest and next value
+        rand_mask = torch.rand_like(x_abs_scaled) > 0.5
+        x_quant_abs = torch.where(rand_mask, fp4_values[next_idx], x_quant_abs)
     
-    # Simple FP4 quantization (simplified)
-    # In practice, this would involve proper FP4 bit manipulation
-    x_quant = torch.clamp(x_scaled, -fp4_max, fp4_max)
+    x_quant = x_sign * x_quant_abs
     
     # Dequantize
     x_dequant = x_quant / scale
     
     return x_dequant
+
+
+def _generate_fp8_values(format: str = 'e4m3') -> torch.Tensor:
+    """Generate all representable FP8 values for a given format."""
+    if format == 'e4m3':
+        # E4M3: 4 exponent bits (bias=7), 3 mantissa bits
+        # Values: [0, 0.001953125, 0.00390625, ..., 448]
+        values = []
+        # Special cases
+        values.append(0.0)
+        
+        # Normalized numbers
+        for exp in range(0, 15):  # 4-bit exponent (excluding special values)
+            for mant in range(0, 8):  # 3-bit mantissa
+                # value = (-1)^sign * 2^(exp - bias) * (1 + mantissa/2^3)
+                if exp == 0 and mant == 0:
+                    continue  # Skip duplicate zero
+                bias = 7
+                value = (2.0 ** (exp - bias)) * (1.0 + mant / 8.0)
+                if value <= 448.0:  # FP8 E4M3 max value
+                    values.append(value)
+        
+        return torch.tensor(sorted(values), dtype=torch.float32)
+    
+    elif format == 'e5m2':
+        # E5M2: 5 exponent bits (bias=15), 2 mantissa bits
+        values = []
+        values.append(0.0)
+        
+        for exp in range(0, 31):
+            for mant in range(0, 4):  # 2-bit mantissa
+                if exp == 0 and mant == 0:
+                    continue
+                bias = 15
+                value = (2.0 ** (exp - bias)) * (1.0 + mant / 4.0)
+                if value <= 57344.0:  # FP8 E5M2 max value
+                    values.append(value)
+        
+        return torch.tensor(sorted(values), dtype=torch.float32)
+    
+    else:
+        raise ValueError(f"Unsupported FP8 format: {format}")
 
 
 def fake_quant_fp8(x: torch.Tensor, 
@@ -221,30 +275,44 @@ def fake_quant_fp8(x: torch.Tensor,
         stochastic_rounding: Whether to use stochastic rounding
         format: FP8 format ('e4m3' or 'e5m2')
     """
-    if format == 'e4m3':
-        # FP8 E4M3: 1 sign + 4 exponent + 3 mantissa
-        fp8_max = 448.0
-    elif format == 'e5m2':
-        # FP8 E5M2: 1 sign + 5 exponent + 2 mantissa
-        fp8_max = 57344.0
-    else:
-        raise ValueError(f"Unsupported FP8 format: {format}")
+    # Generate representable FP8 values
+    fp8_values = _generate_fp8_values(format).to(x.device)
     
     # Calculate scale
     x_abs = x.abs()
-    scale = fp8_max / x_abs.max()
-    scale = torch.clamp(scale, min=1e-8)
+    x_max = x_abs.max()
+    scale = fp8_values[-1] / x_max.clamp(min=1e-8)
     
     # Scale to FP8 range
     x_scaled = x * scale
+    x_sign = torch.sign(x_scaled)
+    x_abs_scaled = x_scaled.abs()
+    
+    # Quantize to nearest representable FP8 value
+    # For efficiency with large tensors, use searchsorted instead of full distance matrix
+    x_abs_flat = x_abs_scaled.flatten()
+    
+    # Find nearest value using binary search
+    indices = torch.searchsorted(fp8_values, x_abs_flat)
+    indices = torch.clamp(indices, 0, len(fp8_values) - 1)
+    
+    # Check both current and previous index to find nearest
+    indices_prev = torch.clamp(indices - 1, min=0)
+    
+    dist_curr = torch.abs(x_abs_flat - fp8_values[indices])
+    dist_prev = torch.abs(x_abs_flat - fp8_values[indices_prev])
+    
+    use_prev = dist_prev < dist_curr
+    nearest_idx = torch.where(use_prev, indices_prev, indices)
     
     if stochastic_rounding:
-        noise = torch.rand_like(x_scaled) - 0.5
-        x_scaled = x_scaled + noise
+        # Stochastic rounding: probabilistically choose between nearest values
+        indices_next = torch.clamp(nearest_idx + 1, max=len(fp8_values) - 1)
+        rand_mask = torch.rand_like(x_abs_flat) > 0.5
+        nearest_idx = torch.where(rand_mask, indices_next, nearest_idx)
     
-    # Simple FP8 quantization (simplified)
-    # In practice, this would involve proper FP8 bit manipulation
-    x_quant = torch.clamp(x_scaled, -fp8_max, fp8_max)
+    x_quant_abs = fp8_values[nearest_idx].reshape(x.shape)
+    x_quant = x_sign * x_quant_abs
     
     # Dequantize
     x_dequant = x_quant / scale

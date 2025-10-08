@@ -4,7 +4,7 @@
 set -e
 
 MODEL="meta-llama/Llama-3.1-8B"
-DEVICE="cuda"  # 使用 cuda，如果没有GPU改为 cpu
+DEVICE="cpu"  # 使用 cuda，如果没有GPU改为 cpu
 DTYPE="bf16"   # 使用 bf16 加载，更快且节省内存
 QUANT_FORMATS="bf16,mxfp8,mxfp4,fp8,fp4,int8,int6,int4"
 OUTPUT_DIR="./results/llama31_8b_quantization_alpha"
