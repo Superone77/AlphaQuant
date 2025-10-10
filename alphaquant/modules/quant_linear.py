@@ -37,7 +37,7 @@ class QuantLinear(nn.Module if nn is not None else object):
         self.weight_quantizer = qcfg.weight_quantizer_cls(qcfg.weight_quantizer_cfg)
         self.act_quantizer = qcfg.act_quantizer_cls(qcfg.act_quantizer_cfg)
 
-        self.inner.weight.data = self.weight_quantizer.quantize_weight(self.inner.weight.data)
+        # self.inner.weight.data = self.weight_quantizer.quantize_weight(self.inner.weight.data)
 
 
     def forward(self, x):  # type: ignore[override]

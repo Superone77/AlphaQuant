@@ -170,7 +170,7 @@ def apply_layer_wise_quantization(model: Any, plan: Dict[str, Dict[str, Any]], d
             qlin = QuantLinear(module.in_features, module.out_features, bias=module.bias is not None, qcfg = qcfg)
             if module.bias is not None:
                 qlin.inner.bias.data = module.bias.data.clone()
-            qlin.inner.weight.data = module.weight.data.clone()
+            qlin.inner.weight.data = qlin.weight_quantizer.quantize_weight(module.weight.data).clone().to(module.weight.data.device).to(module.weight.data.dtype)
             
             setattr(parent, attr, qlin)
             # print(f"Finished Quantization for {module_name} with {scheme} ")
