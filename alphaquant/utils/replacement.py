@@ -8,8 +8,10 @@ import fnmatch
 import torch
 from alphaquant.modules.quant_linear import QuantLinearConfig
 from alphaquant.quantizers.mxfp4 import MXFP4Quantizer, MXFP4Config
+from alphaquant.quantizers.mxfp6 import MXFP6Quantizer, MXFP6Config
 from alphaquant.quantizers.mxfp8 import MXFP8Quantizer, MXFP8Config
 from alphaquant.quantizers.fp4 import FP4Quantizer, FP4Config
+from alphaquant.quantizers.fp6 import FP6Quantizer, FP6Config
 from alphaquant.quantizers.fp8 import FP8Quantizer, FP8Config
 from alphaquant.quantizers.int_quantizers import (
     INT2Quantizer, INT2Config,
@@ -118,8 +120,10 @@ def create_quantizer_from_scheme(scheme: Dict[str, Any], dtype: str) -> Tuple[An
     # Map scheme names to quantizer classes
     quantizer_map = {
         'mxfp4': (MXFP4Quantizer, MXFP4Config),
+        'mxfp6': (MXFP6Quantizer, MXFP6Config),
         'mxfp8': (MXFP8Quantizer, MXFP8Config),
         'fp4': (FP4Quantizer, FP4Config),
+        'fp6': (FP6Quantizer, FP6Config),
         'fp8': (FP8Quantizer, FP8Config),
         'int2': (INT2Quantizer, INT2Config),
         'int3': (INT3Quantizer, INT3Config),
@@ -151,12 +155,25 @@ def apply_layer_wise_quantization(model: Any, plan: Dict[str, Dict[str, Any]], d
             # Create quantizer configs
             (WQ, WCfg), (AQ, ACfg) = create_quantizer_from_scheme(scheme, dtype)
             
+            # Extract extra parameters for quantizer configs
+            extra = scheme.get('extra', {})
+            group_size = scheme.get('group_size', 32)
+            
+            # Build kwargs for weight and activation configs
+            w_kwargs = {'group_size': group_size, 'dtype': dtype}
+            a_kwargs = {'group_size': group_size, 'dtype': dtype}
+            
+            # Add format parameter if present in extra (for FP6, MXFP6, etc.)
+            if 'format' in extra:
+                w_kwargs['format'] = extra['format']
+                a_kwargs['format'] = extra['format']
+            
             # Create quantization config
             qcfg = QuantLinearConfig(
                 weight_quantizer_cls=WQ,
-                weight_quantizer_cfg=WCfg(group_size=scheme.get('group_size', 32), dtype=dtype),
+                weight_quantizer_cfg=WCfg(**w_kwargs),
                 act_quantizer_cls=AQ,
-                act_quantizer_cfg=ACfg(group_size=scheme.get('group_size', 32), dtype=dtype),
+                act_quantizer_cfg=ACfg(**a_kwargs),
                 bias=True
             )
             

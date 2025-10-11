@@ -1,7 +1,9 @@
 from .base import Quantizer, QuantizerConfig, Observer, NoQuantizer, NoQuantConfig
 from .mxfp4 import MXFP4Quantizer, MXFP4Config
+from .mxfp6 import MXFP6Quantizer, MXFP6Config
 from .mxfp8 import MXFP8Quantizer, MXFP8Config
 from .fp4 import FP4Quantizer, FP4Config
+from .fp6 import FP6Quantizer, FP6Config
 from .fp8 import FP8Quantizer, FP8Config
 from .int_quantizers import (
     INT2Quantizer, INT2Config,
@@ -19,10 +21,14 @@ __all__ = [
     'NoQuantConfig',
     'MXFP4Quantizer',
     'MXFP4Config',
+    'MXFP6Quantizer',
+    'MXFP6Config',
     'MXFP8Quantizer',
     'MXFP8Config',
     'FP4Quantizer',
     'FP4Config',
+    'FP6Quantizer',
+    'FP6Config',
     'FP8Quantizer',
     'FP8Config',
     'INT2Quantizer',

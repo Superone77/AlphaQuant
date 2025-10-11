@@ -27,10 +27,13 @@ def mxfp8_e4m3_fwd_kernel(
 
     # -------- 计算 per-block scale_b --------
     blk_max = tl.max(tl.where(mask, x_abs, 0.0), axis=0)
-    # 避免除零 / inf
-    scale_b = tl.where(blk_max > 0.0, 448.0 / blk_max, 1.0)
+    # 避免除零 / inf，确保 blk_max 有一个最小值
+    blk_max = tl.maximum(blk_max, 1e-12)
+    scale_b = 448.0 / blk_max
 
     y = x_abs * scale_b                # bring into [0, 448]
+    # 限制y的范围，避免溢出
+    y = tl.minimum(y, 448.0)
 
     # ============================================================
     # FP8 E4M3 量化 (MXFP8 格式)
@@ -45,6 +48,8 @@ def mxfp8_e4m3_fwd_kernel(
 
     # -------- 反缩放并写回 --------
     q_abs = q_abs_blk / scale_b
+    # 处理可能的 NaN/Inf
+    q_abs = tl.where((q_abs == q_abs) & (q_abs != float('inf')) & (q_abs != float('-inf')), q_abs, 0.0)
     q_val = sign * q_abs
     tl.store(out_ptr + offs, q_val, mask=mask)
 
@@ -73,10 +78,13 @@ def mxfp8_e5m2_fwd_kernel(
 
     # -------- 计算 per-block scale_b --------
     blk_max = tl.max(tl.where(mask, x_abs, 0.0), axis=0)
-    # 避免除零 / inf
-    scale_b = tl.where(blk_max > 0.0, 57344.0 / blk_max, 1.0)
+    # 避免除零 / inf，确保 blk_max 有一个最小值
+    blk_max = tl.maximum(blk_max, 1e-12)
+    scale_b = 57344.0 / blk_max
 
     y = x_abs * scale_b                # bring into [0, 57344]
+    # 限制y的范围，避免溢出
+    y = tl.minimum(y, 57344.0)
 
     # ============================================================
     # FP8 E5M2 量化 (MXFP8 格式)
@@ -90,6 +98,8 @@ def mxfp8_e5m2_fwd_kernel(
 
     # -------- 反缩放并写回 --------
     q_abs = q_abs_blk / scale_b
+    # 处理可能的 NaN/Inf
+    q_abs = tl.where((q_abs == q_abs) & (q_abs != float('inf')) & (q_abs != float('-inf')), q_abs, 0.0)
     q_val = sign * q_abs
     tl.store(out_ptr + offs, q_val, mask=mask)
 

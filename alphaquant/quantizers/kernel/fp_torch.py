@@ -1,6 +1,7 @@
 import torch
 from .nvfp4_triton import nvfp4_forward
 from .mxfp4_triton import mxfp4_forward
+from .mxfp8_triton import mxfp8_forward
 
 
 def fp4_121_positive(x:torch.Tensor, stochastic_rounding:bool=False) -> torch.Tensor:
@@ -151,6 +152,209 @@ def fake_quant_mxfp8(x:torch.Tensor,
     return mxfp8_forward(x, format, stochastic_rounding)
 
 
+def _generate_fp6_values(format: str = 'e3m2') -> torch.Tensor:
+    """
+    Generate all representable positive FP6 values for a given format.
+    FP6 format: 1 sign bit + exponent bits + mantissa bits
+    
+    E2M3: 2 exponent bits (bias=1), 3 mantissa bits
+    E3M2: 3 exponent bits (bias=3), 2 mantissa bits
+    """
+    values = [0.0]
+    
+    if format == 'e2m3':
+        # E2M3: 2 exponent bits (bias=1), 3 mantissa bits
+        exp_bits = 2
+        mant_bits = 3
+        bias = 1
+        exp_range = 2 ** exp_bits  # 0-3
+        mant_range = 2 ** mant_bits  # 0-7
+        
+        for exp in range(exp_range):
+            for mant in range(mant_range):
+                if exp == 0:
+                    # Subnormal numbers
+                    if mant == 0:
+                        continue  # Skip duplicate zero
+                    value = (2.0 ** (1 - bias)) * (mant / float(mant_range))
+                else:
+                    # Normal numbers
+                    value = (2.0 ** (exp - bias)) * (1.0 + mant / float(mant_range))
+                values.append(value)
+                
+    elif format == 'e3m2':
+        # E3M2: 3 exponent bits (bias=3), 2 mantissa bits
+        exp_bits = 3
+        mant_bits = 2
+        bias = 3
+        exp_range = 2 ** exp_bits  # 0-7
+        mant_range = 2 ** mant_bits  # 0-3
+        
+        for exp in range(exp_range):
+            for mant in range(mant_range):
+                if exp == 0:
+                    # Subnormal numbers
+                    if mant == 0:
+                        continue  # Skip duplicate zero
+                    value = (2.0 ** (1 - bias)) * (mant / float(mant_range))
+                else:
+                    # Normal numbers
+                    value = (2.0 ** (exp - bias)) * (1.0 + mant / float(mant_range))
+                values.append(value)
+    else:
+        raise ValueError(f"Unsupported FP6 format: {format}")
+    
+    return torch.tensor(sorted(values), dtype=torch.float32)
+
+
+def fp6_quantize_positive(x: torch.Tensor, stochastic_rounding: bool = False, format: str = 'e3m2') -> torch.Tensor:
+    """
+    Quantize positive values to FP6 format.
+    
+    Args:
+        x: Input tensor (assumed to be non-negative)
+        stochastic_rounding: Whether to use stochastic rounding
+        format: 'e2m3' or 'e3m2'
+    
+    Returns:
+        Quantized tensor
+    """
+    if format == 'e2m3':
+        # E2M3: exp_bits=2 (bias=1), mant_bits=3
+        exp_bits = 2
+        mant_bits = 3
+        bias = 1
+    elif format == 'e3m2':
+        # E3M2: exp_bits=3 (bias=3), mant_bits=2
+        exp_bits = 3
+        mant_bits = 2
+        bias = 3
+    else:
+        raise ValueError(f"Unsupported FP6 format: {format}")
+    
+    # Get FP6 representable values
+    fp6_values = _generate_fp6_values(format).to(x.device).to(x.dtype)
+    
+    # Handle zeros
+    x_nonzero = x.clamp(min=1e-38)
+    
+    # Compute exponent and mantissa
+    log2_x = torch.log2(x_nonzero)
+    exponent = torch.floor(log2_x)
+    
+    # Clamp exponent to valid range
+    exp_max = (2 ** exp_bits) - 1
+    exp_min = 0
+    
+    # For subnormals (exp = 0)
+    # value = 2^(1-bias) * (mantissa / 2^mant_bits)
+    # For normals (exp >= 1)
+    # value = 2^(exp-bias) * (1 + mantissa / 2^mant_bits)
+    
+    # Calculate which exponent bin this value falls into
+    exp_unbiased = exponent
+    exp_biased = exp_unbiased + bias
+    
+    # Clamp to valid exponent range
+    exp_biased = torch.clamp(exp_biased, exp_min, exp_max)
+    
+    # Calculate mantissa
+    is_subnormal = exp_biased == 0
+    
+    # For normal numbers
+    scale_normal = torch.pow(2.0, exp_biased - bias)
+    mantissa_float_normal = (x_nonzero / scale_normal) - 1.0
+    mantissa_float_normal = torch.clamp(mantissa_float_normal, 0.0, 1.0 - 1e-6)
+    
+    # For subnormal numbers
+    scale_subnormal = torch.pow(2.0, 1 - bias)
+    mantissa_float_subnormal = x_nonzero / scale_subnormal
+    mantissa_float_subnormal = torch.clamp(mantissa_float_subnormal, 0.0, 1.0 - 1e-6)
+    
+    # Choose mantissa based on whether value is subnormal
+    mantissa_float = torch.where(is_subnormal, mantissa_float_subnormal, mantissa_float_normal)
+    
+    # Quantize mantissa
+    mantissa_levels = 2 ** mant_bits
+    mantissa_scaled = mantissa_float * mantissa_levels
+    
+    if stochastic_rounding:
+        noise = torch.rand_like(mantissa_scaled) - 0.5
+        mantissa_scaled = mantissa_scaled + noise
+    
+    mantissa_quant = torch.clamp(torch.round(mantissa_scaled), 0, mantissa_levels - 1)
+    
+    # Reconstruct value
+    mantissa_dequant = mantissa_quant / mantissa_levels
+    
+    # Reconstruct final value
+    value_normal = scale_normal * (1.0 + mantissa_dequant)
+    value_subnormal = scale_subnormal * mantissa_dequant
+    
+    result = torch.where(is_subnormal, value_subnormal, value_normal)
+    
+    # Handle original zeros
+    result = torch.where(x == 0, torch.zeros_like(result), result)
+    
+    return result
+
+
+def fp6_scaled(x: torch.Tensor, stochastic_rounding: bool = False, format: str = 'e3m2') -> torch.Tensor:
+    """
+    FP6 quantization with block-wise scaling (for MXFP6).
+    Similar to fp4_121_scaled but for FP6 format.
+    
+    Args:
+        x: Input tensor
+        stochastic_rounding: Whether to use stochastic rounding
+        format: 'e2m3' or 'e3m2'
+    
+    Returns:
+        Quantized tensor
+    """
+    # Get FP6 max value based on format
+    if format == 'e2m3':
+        # E2M3: max = 2^(2) * (1 + 7/8) = 7.5
+        fp6_max = 7.5
+    elif format == 'e3m2':
+        # E3M2: max = 2^(4) * (1 + 3/4) = 28.0
+        fp6_max = 28.0
+    else:
+        raise ValueError(f"Unsupported FP6 format: {format}")
+    
+    sign = x.sign()
+    x_abs = x.abs()
+    
+    # Calculate block-wise scale using E8M0 format (power of 2)
+    scale = torch.pow(2.0, torch.floor(torch.log2(fp6_max / x_abs.max(dim=-1, keepdim=True)[0])))
+    scale = torch.where((0 < scale) * (scale < torch.inf), scale, 1.0)
+    
+    # Quantize absolute values
+    x_fp6_abs = fp6_quantize_positive(x_abs * scale, stochastic_rounding, format) / scale
+    
+    return sign * x_fp6_abs
+
+
+def mxfp6_torch(x: torch.Tensor, 
+                stochastic_rounding: bool = False, 
+                scaled_value_format: str = 'e3m2') -> torch.Tensor:
+    """
+    MXFP6 quantization using PyTorch.
+    
+    Args:
+        x: Input tensor
+        stochastic_rounding: Whether to use stochastic rounding
+        scaled_value_format: 'e2m3' or 'e3m2'
+    
+    Returns:
+        Quantized tensor
+    """
+    if scaled_value_format not in ['e2m3', 'e3m2']:
+        raise RuntimeError(f"do not support scaled_value_format {scaled_value_format}")
+    
+    return fp6_scaled(x, stochastic_rounding, scaled_value_format)
+
+
 def mxfp8_torch(x:torch.Tensor, 
                    stochastic_rounding:bool=False, 
                    scaled_value_format:str='e4m3') -> torch.Tensor:
@@ -160,17 +364,34 @@ def mxfp8_torch(x:torch.Tensor,
         fp8_max = 57344
     else:
         raise RuntimeError(f"do not support scaled_value_format {scaled_value_format}")
+    
     sign = x.sign()
     x_abs = x.abs()
-    scale = torch.pow(2.0, torch.floor(torch.log2(fp8_max / x_abs.max(dim=-1, keepdim=True)[0])))
     
-
-    scale = torch.where((0 < scale) * (scale < torch.inf), scale, 1.0)
+    # Get max per row, clamp to avoid division by zero
+    max_val = x_abs.max(dim=-1, keepdim=True)[0]
+    max_val = torch.clamp(max_val, min=1e-12)  # Avoid division by zero
+    
+    # Calculate scale safely
+    ratio = fp8_max / max_val
+    log_ratio = torch.log2(ratio)
+    # Clamp log values to avoid extreme scales
+    log_ratio = torch.clamp(log_ratio, min=-20, max=20)
+    scale = torch.pow(2.0, torch.floor(log_ratio))
+    
+    # Additional safety check
+    scale = torch.where((0 < scale) * (scale < torch.inf) * ~torch.isnan(scale), scale, 1.0)
+    
     if scaled_value_format == "e4m3":
         x_fp8_abs = (x_abs * scale).to(torch.float8_e4m3fn).to(x.dtype) / scale
     elif scaled_value_format == "e5m2":
         x_fp8_abs = (x_abs * scale).to(torch.float8_e5m2).to(x.dtype) / scale
-    return (sign * x_fp8_abs).to(x.dtype)
+    
+    result = sign * x_fp8_abs
+    # Final safety check to replace any NaN/Inf with zeros
+    result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result)
+    
+    return result.to(x.dtype)
 
 
 if __name__ == '__main__':

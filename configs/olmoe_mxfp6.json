@@ -1,0 +1,16 @@
+{
+  "default": {},
+  "overrides": [
+    { "pattern": "*lm_head*", "skip": true },
+    { "pattern": "*.mlp.gate*", "skip": true },
+
+    { "pattern": "*attn.*", "wq": "mxfp8", "aq": "mxfp8", "group_size": 128 },
+    { "pattern": "*.attention.*", "wq": "mxfp8", "aq": "mxfp8", "group_size": 128 },
+    { "pattern": "*.self_attn.*", "wq": "mxfp8", "aq": "mxfp8", "group_size": 128 },
+
+    { "pattern": "*.experts.*.gate_proj", "wq": "mxfp6", "aq": "mxfp6", "group_size": 64, "extra": {"format": "e3m2"} },
+    { "pattern": "*.experts.*.up_proj",   "wq": "mxfp6", "aq": "mxfp6", "group_size": 64, "extra": {"format": "e3m2"} },
+    { "pattern": "*.experts.*.down_proj", "wq": "mxfp6", "aq": "mxfp6", "group_size": 64, "extra": {"format": "e3m2"} }
+  ]
+}
+

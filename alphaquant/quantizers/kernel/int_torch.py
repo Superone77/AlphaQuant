@@ -264,6 +264,55 @@ def fake_quant_fp4(x: torch.Tensor,
     return x_dequant
 
 
+def _generate_fp6_values(format: str = 'e3m2') -> torch.Tensor:
+    """Generate all representable FP6 values for a given format."""
+    values = [0.0]
+    
+    if format == 'e2m3':
+        # E2M3: 2 exponent bits (bias=1), 3 mantissa bits
+        exp_bits = 2
+        mant_bits = 3
+        bias = 1
+        exp_range = 2 ** exp_bits  # 0-3
+        mant_range = 2 ** mant_bits  # 0-7
+        
+        for exp in range(exp_range):
+            for mant in range(mant_range):
+                if exp == 0:
+                    # Subnormal numbers
+                    if mant == 0:
+                        continue  # Skip duplicate zero
+                    value = (2.0 ** (1 - bias)) * (mant / float(mant_range))
+                else:
+                    # Normal numbers
+                    value = (2.0 ** (exp - bias)) * (1.0 + mant / float(mant_range))
+                values.append(value)
+                
+    elif format == 'e3m2':
+        # E3M2: 3 exponent bits (bias=3), 2 mantissa bits
+        exp_bits = 3
+        mant_bits = 2
+        bias = 3
+        exp_range = 2 ** exp_bits  # 0-7
+        mant_range = 2 ** mant_bits  # 0-3
+        
+        for exp in range(exp_range):
+            for mant in range(mant_range):
+                if exp == 0:
+                    # Subnormal numbers
+                    if mant == 0:
+                        continue  # Skip duplicate zero
+                    value = (2.0 ** (1 - bias)) * (mant / float(mant_range))
+                else:
+                    # Normal numbers
+                    value = (2.0 ** (exp - bias)) * (1.0 + mant / float(mant_range))
+                values.append(value)
+    else:
+        raise ValueError(f"Unsupported FP6 format: {format}")
+    
+    return torch.tensor(sorted(values), dtype=torch.float32)
+
+
 def _generate_fp8_values(format: str = 'e4m3') -> torch.Tensor:
     """Generate all representable FP8 values for a given format."""
     if format == 'e4m3':
@@ -304,6 +353,62 @@ def _generate_fp8_values(format: str = 'e4m3') -> torch.Tensor:
     
     else:
         raise ValueError(f"Unsupported FP8 format: {format}")
+
+
+def fake_quant_fp6(x: torch.Tensor, 
+                  stochastic_rounding: bool = False,
+                  format: str = 'e3m2') -> torch.Tensor:
+    """
+    Fake quantize to FP6 (6-bit floating point).
+    
+    Args:
+        x: Input tensor
+        stochastic_rounding: Whether to use stochastic rounding
+        format: FP6 format ('e2m3' or 'e3m2')
+    """
+    # Generate representable FP6 values
+    fp6_values = _generate_fp6_values(format).to(x.device)
+    
+    # Calculate scale
+    x_abs = x.abs()
+    x_max = x_abs.max()
+    scale = fp6_values[-1] / x_max.clamp(min=1e-8)
+    
+    # Scale to FP6 range
+    x_scaled = x * scale
+    x_sign = torch.sign(x_scaled)
+    x_abs_scaled = x_scaled.abs()
+    
+    # Quantize to nearest representable FP6 value
+    # For efficiency with large tensors, use searchsorted instead of full distance matrix
+    x_abs_flat = x_abs_scaled.flatten()
+    
+    # Find nearest value using binary search
+    indices = torch.searchsorted(fp6_values, x_abs_flat)
+    indices = torch.clamp(indices, 0, len(fp6_values) - 1)
+    
+    # Check both current and previous index to find nearest
+    indices_prev = torch.clamp(indices - 1, min=0)
+    
+    dist_curr = torch.abs(x_abs_flat - fp6_values[indices])
+    dist_prev = torch.abs(x_abs_flat - fp6_values[indices_prev])
+    
+    use_prev = dist_prev < dist_curr
+    nearest_idx = torch.where(use_prev, indices_prev, indices)
+    
+    if stochastic_rounding:
+        # Stochastic rounding: probabilistically choose between nearest values
+        indices_next = torch.clamp(nearest_idx + 1, max=len(fp6_values) - 1)
+        rand_mask = torch.rand_like(x_abs_flat) > 0.5
+        nearest_idx = torch.where(rand_mask, indices_next, nearest_idx)
+    
+    x_quant_abs = fp6_values[nearest_idx].reshape(x.shape)
+    x_quant = x_sign * x_quant_abs
+    
+    # Dequantize
+    x_dequant = x_quant / scale
+    
+    return x_dequant
 
 
 def fake_quant_fp8(x: torch.Tensor, 
@@ -378,10 +483,17 @@ if __name__ == '__main__':
         print(f"INT{bits} quantized:", x_quant[0, :8])
     
     # Test FP quantizers
-    for format in ['e2m1', 'e4m3', 'e5m2']:
-        if format == 'e2m1':
-            quant_func = fake_quant_fp4
-        else:
-            quant_func = fake_quant_fp8
-        x_quant = quant_func(x, stochastic_rounding=False, format=format)
-        print(f"FP{format} quantized:", x_quant[0, :8])
+    # FP4
+    for format in ['e2m1']:
+        x_quant = fake_quant_fp4(x, stochastic_rounding=False, format=format)
+        print(f"FP4-{format} quantized:", x_quant[0, :8])
+    
+    # FP6
+    for format in ['e2m3', 'e3m2']:
+        x_quant = fake_quant_fp6(x, stochastic_rounding=False, format=format)
+        print(f"FP6-{format} quantized:", x_quant[0, :8])
+    
+    # FP8
+    for format in ['e4m3', 'e5m2']:
+        x_quant = fake_quant_fp8(x, stochastic_rounding=False, format=format)
+        print(f"FP8-{format} quantized:", x_quant[0, :8])
