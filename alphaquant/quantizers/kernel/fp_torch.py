@@ -266,8 +266,8 @@ def fp6_quantize_positive(x: torch.Tensor, stochastic_rounding: bool = False, fo
     mantissa_float_normal = (x_nonzero / scale_normal) - 1.0
     mantissa_float_normal = torch.clamp(mantissa_float_normal, 0.0, 1.0 - 1e-6)
     
-    # For subnormal numbers
-    scale_subnormal = torch.pow(2.0, 1 - bias)
+    # For subnormal numbers (use Python pow for scalar exponent)
+    scale_subnormal = (2.0 ** (1 - bias))
     mantissa_float_subnormal = x_nonzero / scale_subnormal
     mantissa_float_subnormal = torch.clamp(mantissa_float_subnormal, 0.0, 1.0 - 1e-6)
     
