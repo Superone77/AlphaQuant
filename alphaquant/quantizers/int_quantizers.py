@@ -14,42 +14,52 @@ from .kernel.int_torch import (
 
 @dataclass
 class INT2Config(QuantizerConfig):
-    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, 
-                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = 128, 
+                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True, 
+                 use_group_quant: bool = False):
         super().__init__(name="int2", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
         self.symmetric = symmetric
+        self.use_group_quant = use_group_quant
 
 
 @dataclass
 class INT3Config(QuantizerConfig):
-    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, 
-                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = 128, 
+                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True, 
+                 use_group_quant: bool = False):
         super().__init__(name="int3", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
         self.symmetric = symmetric
+        self.use_group_quant = use_group_quant
 
 
 @dataclass
 class INT4Config(QuantizerConfig):
-    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, 
-                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = 128, 
+                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True, 
+                 use_group_quant: bool = False):
         super().__init__(name="int4", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
         self.symmetric = symmetric
+        self.use_group_quant = use_group_quant
 
 
 @dataclass
 class INT6Config(QuantizerConfig):
-    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, 
-                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = 128, 
+                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True, 
+                 use_group_quant: bool = False):
         super().__init__(name="int6", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
         self.symmetric = symmetric
+        self.use_group_quant = use_group_quant
 
 
 @dataclass
 class INT8Config(QuantizerConfig):
-    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = None, 
-                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True):
+    def __init__(self, wq: Optional[str] = None, aq: Optional[str] = None, group_size: Optional[int] = 128, 
+                 extra: Optional[Dict[str, Any]] = None, dtype="bfloat16", symmetric: bool = True, 
+                 use_group_quant: bool = False):
         super().__init__(name="int8", wq=wq, aq=aq, group_size=group_size, extra=extra, dtype=dtype)
         self.symmetric = symmetric
+        self.use_group_quant = use_group_quant
 
 
 # ============================================================================
@@ -64,6 +74,8 @@ class BaseIntQuantizer(Quantizer):
         self.qmin = qmin
         self.qmax = qmax
         self.symmetric = getattr(cfg, 'symmetric', True)
+        self.use_group_quant = getattr(cfg, 'use_group_quant', False)
+        self.group_size = getattr(cfg, 'group_size', 128)
 
     @staticmethod
     def _calc_scale_max(max_val: torch.Tensor, qmax: int) -> torch.Tensor:
@@ -92,9 +104,60 @@ class BaseIntQuantizer(Quantizer):
             x_deq = (x_quant - zero_point) * scale
         return x_deq
 
+    def _quantize_weight_group(self, w: torch.Tensor):
+        """Quantize weights with group quantization."""
+        original_shape = w.shape
+        w_flat = w.flatten()
+        
+        # Calculate number of groups
+        numel = w_flat.numel()
+        num_groups = (numel + self.group_size - 1) // self.group_size
+        
+        # Pad to multiple of group_size
+        pad_size = num_groups * self.group_size - numel
+        if pad_size > 0:
+            w_flat = torch.cat([w_flat, torch.zeros(pad_size, device=w.device, dtype=w.dtype)])
+        
+        # Reshape to [num_groups, group_size]
+        w_grouped = w_flat.reshape(num_groups, self.group_size)
+        
+        # Quantize each group
+        w_deq_groups = []
+        for i in range(num_groups):
+            group = w_grouped[i]
+            
+            # Calculate scale and zero point for this group
+            if self.symmetric:
+                maxv = group.abs().max()
+                scale = self._calc_scale_max(maxv, self.qmax)
+                zero_point = torch.zeros_like(scale)
+            else:
+                x_min = group.min()
+                x_max = group.max()
+                scale = (x_max - x_min) / (self.qmax - self.qmin)
+                zero_point = self.qmin - x_min / scale
+            
+            # Quantize and dequantize
+            group_deq = self._quantize_with_params(group, scale, zero_point)
+            w_deq_groups.append(group_deq)
+        
+        # Concatenate and remove padding
+        w_deq_flat = torch.cat(w_deq_groups)
+        if pad_size > 0:
+            w_deq_flat = w_deq_flat[:-pad_size]
+        
+        # Reshape back to original shape
+        w_deq = w_deq_flat.reshape(original_shape)
+        return w_deq
+
     def quantize_weight(self, w: torch.Tensor):
         """Quantize weights using the appropriate integer quantization kernel."""
-        return self._quantize_kernel(w, stochastic_rounding=False, symmetric=self.symmetric)
+        if not self.use_group_quant:
+            # Per-tensor quantization
+            return self._quantize_kernel(w, stochastic_rounding=False, symmetric=self.symmetric)
+        else:
+            # Group quantization
+            return self._quantize_weight_group(w)
 
     def _from_range(self, lo: torch.Tensor, hi: torch.Tensor):
         """Calculate scale from range for activation quantization."""
