@@ -239,7 +239,7 @@ def main():
     else:
         logger.info(f"Computing Alpha-Hill values for model: {args.model}")
         model = load_hf_causal_lm(
-            model_name=args.model,
+            model_id=args.model,
             device=args.device,
             dtype="fp32"
         )

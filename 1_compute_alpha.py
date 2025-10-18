@@ -84,7 +84,7 @@ def main():
     
     # Load model
     model = load_hf_causal_lm(
-        model_name=args.model,
+        model_id=args.model,
         device=args.device,
         dtype=args.dtype
     )
