@@ -67,8 +67,12 @@ def get_layers_for_model(model: nn.Module, model_type: str = 'auto') -> List[nn.
             model_type = 'bloom'
         elif 'mixtral' in model_name:
             model_type = 'mixtral'
-        elif 'qwen' in model_name:
+        elif 'qwen' in model_name or 'qwen2moe' in model_name:
             model_type = 'qwen'
+        elif 'deepseek' in model_name:
+            model_type = 'deepseek'
+        elif 'olmoe' in model_name or 'olmo' in model_name:
+            model_type = 'olmoe'
         else:
             # Try to find layers attribute
             if hasattr(model, 'model') and hasattr(model.model, 'layers'):
@@ -82,7 +86,7 @@ def get_layers_for_model(model: nn.Module, model_type: str = 'auto') -> List[nn.
                 )
     
     # Get layers based on type
-    if model_type in ['llama', 'mixtral', 'qwen', 'opt']:
+    if model_type in ['llama', 'mixtral', 'qwen', 'opt', 'deepseek', 'olmoe']:
         return model.model.layers
     elif model_type == 'gpt2':
         return model.transformer.h

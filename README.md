@@ -28,6 +28,27 @@ python examples/gptq_quantization_example.py
 
 **📖 Full documentation**: See [GPTQ_PIPELINE_README.md](GPTQ_PIPELINE_README.md)
 
+## 🏗️ 独立模型支持（不受Transformers版本影响）
+
+AlphaQuant现在包含独立的模型定义，不再受transformers库版本限制：
+
+| 模型 | 路径 | 支持特性 |
+|------|------|----------|
+| **OLMoE** | `models/olmoe/` | Top-8 routing, GPTQ优化 |
+| **Qwen2-MoE** | `models/qwen_moe_14b_chat/` | Top-4 + Shared Expert |
+| **Mixtral** | `models/mixtral_model/` | Top-2 sparse MoE |
+| **DeepSeek-MoE** | `models/deepseek_moe_16b_chat/` | Multi-level routing |
+
+**使用方法**:
+```python
+from models.olmoe.modeling_olmoe import OlmoeForCausalLM
+model = OlmoeForCausalLM.from_pretrained("allenai/OLMoE-1B-7B-0924")
+```
+
+**📖 详细文档**: 
+- [models/README.md](models/README.md) - 模型使用指南
+- [MODEL_INTEGRATION_SUMMARY.md](MODEL_INTEGRATION_SUMMARY.md) - 集成总结
+
 ---
 
 ## Basic Quantization & Calibration

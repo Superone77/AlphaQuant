@@ -10,8 +10,9 @@ The GPTQ pipeline provides mixed-precision post-training quantization for large 
 - ✅ **Multiple formats**: INT2/3/4/6/8, FP4/6/8, MXFP4/6/8
 - ✅ **GPTQ algorithm**: Uses Hessian information for optimal quantization
 - ✅ **RTN fallback**: Round-to-nearest for quick quantization without calibration
-- ✅ **MoE support**: Special configurations for Mixture-of-Experts models
+- ✅ **MoE support**: 🔥 **Routing-score-weighted Hessian** for expert layers (inspired by MoEQuant)
 - ✅ **JSON configuration**: Easy-to-use configuration system
+- ✅ **Auto MoE detection**: Automatically detects Mixtral, Qwen, DeepSeek, OLMoE architectures
 
 ## 📁 Project Structure
 
@@ -199,19 +200,60 @@ GPTQConfig(
 - **actorder**: False (default), enable for ~0.1-0.2 PPL improvement
 - **static_groups**: False (default), rarely needed
 
+## 🔥 MoE-Specific Optimizations
+
+**New in this implementation**: We've integrated MoEQuant's key insight - **routing-score-weighted Hessian computation** - into AlphaQuant's GPTQ pipeline!
+
+### What We Learned from MoEQuant
+
+The key innovation: In MoE models, not all tokens contribute equally to an expert's weights. MoEQuant weights the Hessian by routing probabilities:
+
+```python
+# Standard GPTQ: H = X^T X
+# MoE GPTQ: H = (sqrt(p) * X)^T (sqrt(p) * X)
+```
+
+This accounts for:
+- ✅ Sparse expert activation
+- ✅ Token routing probabilities  
+- ✅ Expert utilization differences
+
+**📖 Detailed MoE documentation**: See [alphaquant/gptq/MOE_SUPPORT.md](alphaquant/gptq/MOE_SUPPORT.md)
+
+### Supported MoE Architectures
+
+| Model | Top-K | Special Features | Status |
+|-------|-------|------------------|--------|
+| Mixtral | 2 | Standard routing | ✅ Full support |
+| Qwen-MoE | 4 | Shared expert gate | ✅ Full support |
+| DeepSeek-MoE | Variable | Multi-level routing | ✅ Full support |
+| OLMoE | 8 | Standard routing | ✅ Full support |
+
+### Quick MoE Example
+
+```bash
+# Automatically uses MoE-optimized GPTQ for expert layers
+python scripts/run_gptq.py \
+    --model allenai/OLMoE-1B-7B-0924 \
+    --config configs/gptq_olmoe_mixed.json \
+    --save olmoe_quantized.pt
+```
+
 ## 🎓 Comparison with MoEQuant
 
-This implementation is **inspired by** but **not a copy of** MoEQuant. Key differences:
+This implementation **integrates** MoEQuant's routing-weighted Hessian while extending it with AlphaQuant's features:
 
 | Aspect | MoEQuant | AlphaQuant GPTQ |
 |--------|----------|-----------------|
 | **Purpose** | Research implementation for MoE quantization | Production-ready mixed-precision pipeline |
+| **Routing-weighted Hessian** | ✅ Yes | ✅ **Yes (integrated!)** |
+| **Expert Utilization Tracking** | ❌ No | ✅ Yes |
 | **Quantizer System** | Custom int quantizers | AlphaQuant's unified system (INT, FP, MXFP) |
 | **Configuration** | Python code | JSON files |
-| **MoE Support** | Built-in special handling | Configuration-driven |
-| **Integration** | Standalone repo | Integrated into AlphaQuant |
+| **MoE Detection** | Manual | Automatic |
+| **Architecture Support** | 3 hardcoded | 4+ extensible |
 | **Format Support** | INT only | INT, FP, MXFP |
-| **Use Case** | MoE models | All transformer models |
+| **Use Case** | MoE models only | All transformer models |
 
 ### What We Learned from MoEQuant
 
