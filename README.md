@@ -1,5 +1,37 @@
 # AlphaQuant
 
+## 🆕 GPTQ Mixed-Precision Quantization
+
+AlphaQuant now includes a complete GPTQ pipeline for mixed-precision post-training quantization!
+
+### Quick Start with GPTQ
+
+```bash
+# Using the CLI script
+python scripts/run_gptq.py \
+  --model meta-llama/Llama-2-7b-hf \
+  --config configs/gptq_mixed_precision.json \
+  --dataset wikitext2 \
+  --nsamples 128 \
+  --save quantized_model.pt
+
+# Or use the example script
+python examples/gptq_quantization_example.py
+```
+
+### Features
+- ✅ Mixed-precision: INT2/3/4/6/8, FP4/6/8, MXFP4/6/8
+- ✅ GPTQ algorithm with Hessian-based optimization
+- ✅ JSON-based configuration for easy layer-wise quantization
+- ✅ Support for MoE models (OLMoE, Mixtral, Qwen-MoE)
+- ✅ RTN fallback for quick quantization
+
+**📖 Full documentation**: See [GPTQ_PIPELINE_README.md](GPTQ_PIPELINE_README.md)
+
+---
+
+## Basic Quantization & Calibration
+
 ### 1) Quantize & calibrate
 
 ```bash

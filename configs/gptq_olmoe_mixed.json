@@ -1,0 +1,60 @@
+{
+  "default": {
+    "wq": "int4",
+    "aq": "bf16",
+    "group_size": 128
+  },
+  "overrides": [
+    {
+      "pattern": "model.layers.*.self_attn.q_proj",
+      "wq": "mxfp6",
+      "aq": "bf16",
+      "group_size": 64,
+      "comment": "Q projection with MXFP6"
+    },
+    {
+      "pattern": "model.layers.*.self_attn.k_proj",
+      "wq": "mxfp6",
+      "aq": "bf16",
+      "group_size": 64,
+      "comment": "K projection with MXFP6"
+    },
+    {
+      "pattern": "model.layers.*.self_attn.v_proj",
+      "wq": "mxfp6",
+      "aq": "bf16",
+      "group_size": 64,
+      "comment": "V projection with MXFP6"
+    },
+    {
+      "pattern": "model.layers.*.self_attn.o_proj",
+      "wq": "int4",
+      "aq": "bf16",
+      "group_size": 128,
+      "comment": "O projection with INT4"
+    },
+    {
+      "pattern": "model.layers.*.mlp.experts.*",
+      "wq": "mxfp4",
+      "aq": "bf16",
+      "group_size": 32,
+      "comment": "Expert FFN layers with MXFP4"
+    },
+    {
+      "pattern": "model.layers.*.mlp.shared_expert.*",
+      "wq": "mxfp6",
+      "aq": "bf16",
+      "group_size": 64,
+      "comment": "Shared expert with higher precision MXFP6"
+    },
+    {
+      "pattern": "model.layers.*.mlp.gate",
+      "wq": "bf16",
+      "aq": "bf16",
+      "group_size": 128,
+      "skip": true,
+      "comment": "Skip quantizing router"
+    }
+  ]
+}
+

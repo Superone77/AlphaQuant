@@ -1,0 +1,45 @@
+{
+  "default": {
+    "wq": "int4",
+    "aq": "bf16",
+    "group_size": 128
+  },
+  "overrides": [
+    {
+      "pattern": "model.layers.0.*",
+      "wq": "int6",
+      "aq": "bf16",
+      "group_size": 128,
+      "comment": "First layer uses higher precision"
+    },
+    {
+      "pattern": "model.layers.*.self_attn.*",
+      "wq": "int4",
+      "aq": "bf16",
+      "group_size": 128,
+      "comment": "Attention layers use INT4"
+    },
+    {
+      "pattern": "model.layers.*.mlp.gate_proj",
+      "wq": "mxfp4",
+      "aq": "bf16",
+      "group_size": 32,
+      "comment": "MLP gate uses MXFP4"
+    },
+    {
+      "pattern": "model.layers.*.mlp.up_proj",
+      "wq": "mxfp4",
+      "aq": "bf16",
+      "group_size": 32,
+      "comment": "MLP up projection uses MXFP4"
+    },
+    {
+      "pattern": "model.layers.*.mlp.down_proj",
+      "wq": "int3",
+      "aq": "bf16",
+      "group_size": 128,
+      "comment": "Down projection can use lower precision"
+    }
+  ]
+}
+
