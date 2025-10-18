@@ -182,7 +182,8 @@ def gptq_quantize_model(
             weight_quantizer = WQ(WCfg(**w_kwargs))
             
             # Create GPTQ instance
-            gptq = GPTQ(full[name])
+            use_hadamard = gptq_config.use_hadamard if gptq_config else False
+            gptq = GPTQ(full[name], use_hadamard=use_hadamard)
             
             # Register hook to collect inputs
             def add_batch(name_):

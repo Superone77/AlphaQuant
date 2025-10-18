@@ -9,6 +9,7 @@ AlphaQuant is a complete quantization framework that uses Alpha-Hill sensitivity
 - ✅ **Alpha-Hill Metric**: Quantization sensitivity measurement for layer-wise analysis
 - ✅ **Automatic Bitwidth Allocation**: Data-driven precision assignment based on sensitivity
 - ✅ **GPTQ Weight Optimization**: Hessian-based post-training quantization
+- ✅ **Hadamard Transform**: Outlier suppression for better low-bit quantization *(NEW!)*
 - ✅ **Mixed-Precision Support**: INT2/3/4/6/8, FP4/6/8, MXFP4/6/8
 - ✅ **MoE Model Support**: OLMoE, Mixtral, Qwen-MoE, DeepSeek-MoE
 - ✅ **Complete Pipeline**: From alpha computation to model evaluation
@@ -30,6 +31,7 @@ This will:
 1. Compute Alpha-Hill values for all layers
 2. Allocate bitwidth based on sensitivity (30% high-precision mxfp4, 70% mxfp8)
 3. Apply GPTQ quantization
+3.5. (Optional) Finetune router weights only
 4. Evaluate the quantized model
 5. Generate analysis visualizations
 
@@ -68,10 +70,33 @@ python 3_gptq_quantize.py \
     --config configs/auto_quant_config.json \
     --dataset wikitext2 \
     --nsamples 128 \
+    --use-hadamard \
     --save results/quantized_model.pt
 ```
 
 **Output**: Quantized model checkpoint with optimized weights.
+
+**New Feature - Hadamard Transform:**
+- Add `--use-hadamard` flag to enable outlier suppression
+- Redistributes activation outliers for better quantization
+- Especially effective for low-bit (2-4 bit) quantization
+- No runtime overhead (fused into weights during quantization)
+- See [Hadamard Transform Guide](docs/HADAMARD_TRANSFORM.md) for details
+
+#### Step 3.5: Router Finetuning (Optional)
+
+```bash
+python 3.5_router_finetuning.py \
+    --model allenai/OLMoE-1B-7B-0924 \
+    --checkpoint results/quantized_model.pt \
+    --lr 1e-4 \
+    --batch_size 1 \
+    --weight_decay 1e-4 \
+    --num_epochs 1 \
+    --save results/router_finetuned_model.pt
+```
+
+**Output**: Model with finetuned router weights. This step freezes all attention and expert weights, and only finetunes the router/gate layers to minimize cross-entropy loss on the calibration dataset (128 sequences of length 2048 from WikiText2).
 
 #### Step 4: Evaluate Model
 
@@ -111,6 +136,7 @@ AlphaQuant/
 ├── 1_compute_alpha.py          # Step 1: Compute Alpha-Hill values
 ├── 2_allocate_bitwidth.py      # Step 2: Automatic bitwidth allocation
 ├── 3_gptq_quantize.py          # Step 3: GPTQ weight quantization
+├── 3.5_router_finetuning.py    # Step 3.5: Router finetuning (optional)
 ├── 4_evaluate_model.py         # Step 4: Model evaluation
 ├── 5_analyze_results.py        # Step 5: Results analysis
 ├── run_pipeline.sh             # Complete pipeline runner
@@ -240,8 +266,10 @@ python scripts/eval_with_plans.py \
 
 Comprehensive documentation is available in the `docs/` directory:
 
+- **`docs/HADAMARD_TRANSFORM.md`** - **NEW!** Hadamard transform for outlier suppression
 - **`docs/GPTQ_PIPELINE_README.md`** - GPTQ implementation details
 - **`docs/GPTQ_QUICKSTART.md`** - Quick start guide for GPTQ
+- **`docs/ROUTER_FINETUNING.md`** - Router-only finetuning guide
 - **`docs/MODEL_INTEGRATION_SUMMARY.md`** - MoE model integration guide
 - **`docs/GROUP_QUANTIZATION_README.md`** - Group quantization documentation
 - **`models/README.md`** - Model usage and architecture details

@@ -107,6 +107,11 @@ def parse_args():
         action="store_true",
         help="Use activation order for GPTQ"
     )
+    parser.add_argument(
+        "--use-hadamard",
+        action="store_true",
+        help="Use Hadamard transform to suppress outliers (recommended for better quantization)"
+    )
     
     # Output settings
     parser.add_argument(
@@ -173,16 +178,19 @@ def main():
         quantized_model = rtn_quantize_model(model, plan)
     else:
         logger.info("Using GPTQ quantization")
+        if args.use_hadamard:
+            logger.info("✓ Hadamard transform enabled for outlier suppression")
         gptq_config = GPTQConfig(
             groupsize=args.groupsize,
             actorder=args.actorder,
-            percdamp=0.01
+            percdamp=0.01,
+            use_hadamard=args.use_hadamard
         )
         quantized_model = gptq_quantize_model(
             model=model,
             layer_config=plan,
             dataloader=dataloader,
-            config=gptq_config
+            gptq_config=gptq_config
         )
     
     # Save quantized model

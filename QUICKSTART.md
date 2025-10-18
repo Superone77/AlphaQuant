@@ -24,6 +24,7 @@ pip install -r requirements.txt
 1. ✅ 计算Alpha-Hill敏感度值
 2. ✅ 自动分配量化位宽
 3. ✅ GPTQ权重优化
+3.5. (可选) Router权重微调
 4. ✅ 模型评估
 5. ✅ 结果分析
 
@@ -105,6 +106,35 @@ python 3_gptq_quantize.py \
 - `--nsamples`: 校准样本数
 - `--groupsize`: GPTQ分组大小
 - `--use-rtn`: 使用RTN替代GPTQ（更快但精度略低）
+
+### 步骤3.5: Router微调（可选）
+
+```bash
+python 3.5_router_finetuning.py \
+    --model allenai/OLMoE-1B-7B-0924 \
+    --checkpoint results/quantized_model.pt \
+    --lr 1e-4 \
+    --batch_size 1 \
+    --weight_decay 1e-4 \
+    --num_epochs 1 \
+    --save outputs/router_finetuned_model.pt \
+    --device cuda
+```
+
+**作用**: 微调Router权重以适应量化后的专家权重
+**输出**: `outputs/router_finetuned_model.pt`
+
+**何时使用**:
+- ✅ 专家权重被严重量化（INT3/INT4）导致精度下降
+- ✅ 希望通过Router适应来恢复性能
+- ❌ 使用高精度量化（MXFP8/BF16）时通常不需要
+- ❌ 计算资源受限时可跳过
+
+**训练参数**:
+- 冻结所有注意力和专家权重
+- 仅训练Router/Gate层
+- 使用WikiText2的128个序列（长度2048）
+- AdamW优化器，学习率1e-4
 
 ### 步骤4: 评估模型
 
@@ -293,6 +323,7 @@ A:
 - Alpha值: `results/alpha_values.csv`
 - 配置: `configs/auto_quant_config.json`
 - 模型: `results/quantized_model.pt`
+- Router微调模型: `outputs/router_finetuned_model.pt` (可选)
 - 评估: `results/eval_results.json`
 - 图表: `results/*.png`
 

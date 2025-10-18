@@ -31,15 +31,16 @@ class GPTQMoE(GPTQ):
     for better quantization of sparsely activated experts.
     """
     
-    def __init__(self, layer: nn.Linear, expert_id: Optional[int] = None):
+    def __init__(self, layer: nn.Linear, expert_id: Optional[int] = None, use_hadamard: bool = False):
         """
         Initialize GPTQ for an MoE expert layer.
         
         Args:
             layer: The expert linear layer to quantize
             expert_id: ID of this expert (for tracking)
+            use_hadamard: Whether to apply Hadamard transform for outlier suppression
         """
-        super().__init__(layer)
+        super().__init__(layer, use_hadamard=use_hadamard)
         self.expert_id = expert_id
         self.utilization_count = 0  # Track how often this expert is used
     
@@ -257,7 +258,8 @@ def create_gptq_for_layer(
     layer: nn.Module,
     layer_name: str,
     is_expert: bool = False,
-    expert_id: Optional[int] = None
+    expert_id: Optional[int] = None,
+    use_hadamard: bool = False
 ) -> GPTQ:
     """
     Create appropriate GPTQ instance for a layer.
@@ -267,14 +269,15 @@ def create_gptq_for_layer(
         layer_name: Full layer name
         is_expert: Whether this is an MoE expert layer
         expert_id: Expert ID if applicable
+        use_hadamard: Whether to apply Hadamard transform for outlier suppression
         
     Returns:
         GPTQ or GPTQMoE instance
     """
     if is_expert:
-        return GPTQMoE(layer, expert_id=expert_id)
+        return GPTQMoE(layer, expert_id=expert_id, use_hadamard=use_hadamard)
     else:
-        return GPTQ(layer)
+        return GPTQ(layer, use_hadamard=use_hadamard)
 
 
 def detect_moe_architecture(model: nn.Module) -> str:

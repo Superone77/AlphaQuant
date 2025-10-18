@@ -1,0 +1,47 @@
+{
+  "description": "Example GPTQ config with Hadamard transform for outlier suppression",
+  "comment": "Use with --use-hadamard flag for better quantization quality",
+  
+  "global_config": {
+    "dtype": "bfloat16",
+    "use_hadamard": true
+  },
+  
+  "layer_patterns": {
+    ".*attn.*": {
+      "w_bits": 4,
+      "group_size": 128,
+      "scheme": "int",
+      "description": "Attention layers - 4-bit with Hadamard"
+    },
+    
+    ".*mlp.*gate.*": {
+      "w_bits": 8,
+      "group_size": -1,
+      "scheme": "int",
+      "description": "MLP gate - 8-bit (critical for routing)"
+    },
+    
+    ".*mlp.*experts.*": {
+      "w_bits": 3,
+      "group_size": 128,
+      "scheme": "int",
+      "description": "Expert layers - aggressive 3-bit with Hadamard"
+    },
+    
+    ".*mlp.*shared_expert.*": {
+      "w_bits": 4,
+      "group_size": 128,
+      "scheme": "int",
+      "description": "Shared expert - 4-bit with Hadamard"
+    }
+  },
+  
+  "notes": [
+    "Hadamard transform redistributes outliers for better quantization",
+    "Especially effective for low-bit (2-4 bit) quantization",
+    "No runtime overhead - fused into weights during quantization",
+    "Recommended for all GPTQ quantization workflows"
+  ]
+}
+

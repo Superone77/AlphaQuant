@@ -27,6 +27,7 @@ class GPTQConfig:
     groupsize: int = -1
     actorder: bool = False
     static_groups: bool = False
+    use_hadamard: bool = False  # Enable Hadamard transform for outlier suppression
 
 
 class GPTQ:
@@ -37,14 +38,16 @@ class GPTQ:
     1. Collect Hessian information during calibration
     2. Use the Hessian to minimize quantization error
     3. Support group-wise quantization and activation ordering
+    4. Optional: Apply Hadamard transform to suppress outliers
     """
 
-    def __init__(self, layer: nn.Linear):
+    def __init__(self, layer: nn.Linear, use_hadamard: bool = False):
         """
         Initialize GPTQ for a layer.
         
         Args:
             layer: The linear layer to quantize
+            use_hadamard: Whether to apply Hadamard transform for outlier suppression
         """
         self.layer = layer
         self.dev = self.layer.weight.device
@@ -53,6 +56,9 @@ class GPTQ:
         self.columns = W.shape[1]
         self.H = torch.zeros((self.columns, self.columns), device=self.dev)
         self.nsamples = 0
+        self.use_hadamard = use_hadamard
+        self.had_K = None
+        self.had_dim = None
 
     def add_batch(self, inp: torch.Tensor, out: Optional[torch.Tensor] = None):
         """
@@ -105,6 +111,12 @@ class GPTQ:
         """
         W = self.layer.weight.data.clone()
         W = W.float()
+        
+        # Apply Hadamard transform to weight if enabled
+        # This fuses H into the weight: W' = W @ H^T
+        # The input transformation H @ x will be handled by adjacent layer
+        if self.use_hadamard:
+            W = self._apply_hadamard_to_weight(W)
 
         tick = time.time()
 
@@ -217,8 +229,46 @@ class GPTQ:
             # No quantization available
             return w
 
+    def _apply_hadamard_to_weight(self, W: torch.Tensor) -> torch.Tensor:
+        """
+        Apply Hadamard transform to weight matrix for outlier suppression.
+        
+        Transforms W' = W @ H^T where H is the Hadamard matrix.
+        
+        Args:
+            W: Weight matrix [out_features, in_features]
+            
+        Returns:
+            Transformed weight matrix
+        """
+        try:
+            from ..utils.hadamard_utils import get_hadK, matmul_hadU
+        except ImportError:
+            logging.warning("Hadamard utils not found, skipping Hadamard transform")
+            return W
+        
+        in_features = W.shape[1]
+        
+        # Get Hadamard matrix
+        try:
+            hadK, K = get_hadK(in_features, transpose=True)
+            self.had_K = hadK
+            self.had_dim = K
+        except (AssertionError, NotImplementedError) as e:
+            logging.warning(f"Cannot apply Hadamard to dimension {in_features}: {e}")
+            return W
+        
+        # Apply: W' = W @ H^T = (H @ W^T)^T
+        W_t = W.t()
+        W_t_transformed = matmul_hadU(W_t, hadK, K)
+        W_transformed = W_t_transformed.t()
+        
+        logging.debug(f"Applied Hadamard transform to weight [{W.shape[0]}x{W.shape[1]}]")
+        return W_transformed
+    
     def free(self):
         """Free memory used by GPTQ."""
         self.H = None
+        self.had_K = None
         torch.cuda.empty_cache()
 
