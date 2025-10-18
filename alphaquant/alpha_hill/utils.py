@@ -25,7 +25,9 @@ def setup_logging(level: str = "INFO"):
         datefmt="%H:%M:%S",
         force=True,
     )
-    logging.info(f"Log level set to {level}")
+    logger = logging.getLogger(__name__)
+    logger.info(f"Log level set to {level}")
+    return logger
 
 def torch_dtype_from_str(s: str):
     s = s.lower()
