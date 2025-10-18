@@ -99,18 +99,32 @@ def main():
     # Convert to DataFrame for easier viewing
     df_data = []
     for name, value in alpha_results.items():
-        df_data.append({
+        row = {
             "layer_name": name,
-            "alpha_hill": value
-        })
+            "alpha_hill": value['alpha'],
+            "category": value.get('category', 'unknown'),
+            "shape": str(value.get('shape', 'unknown')),
+            "out_features": value.get('out_features', 0),
+            "in_features": value.get('in_features', 0),
+            "numel": value.get('numel', 0),
+            "k_used": value.get('k_used', 0),
+            "n_eigs": value.get('n_eigs', 0),
+            "method": value.get('method', 'unknown'),
+        }
+        df_data.append(row)
     
     df = pd.DataFrame(df_data)
+    # Filter out NaN values before sorting
+    df_valid = df[df['alpha_hill'].notna() & ~df['alpha_hill'].apply(lambda x: x != x if isinstance(x, float) else False)]
     df = df.sort_values("alpha_hill", ascending=False)
     df.to_csv(args.output, index=False)
     
     logger.info(f"✓ Alpha-Hill computation complete!")
     logger.info(f"  Total layers: {len(alpha_results)}")
-    logger.info(f"  Alpha range: [{df['alpha_hill'].min():.4f}, {df['alpha_hill'].max():.4f}]")
+    if len(df_valid) > 0:
+        logger.info(f"  Alpha range: [{df_valid['alpha_hill'].min():.4f}, {df_valid['alpha_hill'].max():.4f}]")
+    else:
+        logger.info(f"  No valid alpha values computed")
     logger.info(f"\nNext step: Use 2_allocate_bitwidth.py to assign quantization precision")
 
 
