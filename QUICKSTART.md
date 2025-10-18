@@ -75,12 +75,15 @@ python 2_allocate_bitwidth.py \
 - `--mxfp4-ratio`: 使用高精度MXFP4的层比例（敏感层）
 - `--bf16-ratio`: 保持BF16不量化的层比例（最敏感层）
 - `--skip-attention`: 跳过attention层量化（默认开启）
-- `--skip-gate`: 跳过gate/router层量化（默认开启）
+- `--skip-gate`: 跳过routing gate/router层量化（默认开启）
 - `--no-skip-attention`: 如果要量化attention层，使用此选项
-- `--no-skip-gate`: 如果要量化gate/router层，使用此选项
+- `--no-skip-gate`: 如果要量化routing gate/router层，使用此选项
 - 剩余层使用MXFP8中精度
 
-**⚠️ 重要**: 默认情况下，attention层（q_proj, k_proj, v_proj, o_proj）和gate/router层不会被量化，因为它们对模型性能影响较大。
+**⚠️ 重要**: 
+- 默认跳过：attention层（q_proj, k_proj, v_proj, o_proj）和routing gate/router层
+- **混合精度仅应用于剩余层**（主要是MoE FFN中的gate_proj, up_proj, down_proj）
+- mxfp4-ratio在这些剩余层中按alpha值排序后分配
 
 ### 步骤3: GPTQ量化
 

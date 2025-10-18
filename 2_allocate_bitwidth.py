@@ -6,11 +6,16 @@ This script automatically assigns quantization precision to each layer
 based on Alpha-Hill sensitivity values. Layers with higher alpha values
 (more sensitive) get higher precision.
 
-By default, attention layers (q_proj, k_proj, v_proj, o_proj) and 
-gate/router layers are NOT quantized as they are critical for model performance.
+By default, the following layers are NOT quantized as they are critical:
+- Attention layers: q_proj, k_proj, v_proj, o_proj
+- Routing gate/router layers (NOT gate_proj/up_proj/down_proj)
+
+Mixed precision allocation (mxfp4-ratio) is applied to remaining layers,
+mainly: gate_proj, up_proj, down_proj in MoE FFN blocks.
 
 Usage:
-    # Basic usage (skips attention and gate layers by default)
+    # Basic usage (skips attention and routing gate layers by default)
+    # Applies mixed precision to gate_proj/up_proj/down_proj
     python 2_allocate_bitwidth.py \\
         --model allenai/OLMoE-1B-7B-0924 \\
         --alpha-csv results/alpha_values.csv \\
@@ -85,8 +90,9 @@ def create_quantization_config(
             })
     
     # Skip gate/router layers by default (critical for MoE routing)
+    # Note: This skips routing gates like "*.gate" or "*.router", NOT gate_proj
     if skip_gate:
-        gate_patterns = ["*.gate", "*.router", "*gate_proj*", "*router*"]
+        gate_patterns = ["*.gate", "*.router"]
         for pattern in gate_patterns:
             config["overrides"].append({
                 "pattern": pattern,
@@ -95,15 +101,20 @@ def create_quantization_config(
             })
     
     # Filter out attention and gate layers from alpha-based allocation
+    # This ensures mxfp4-ratio only applies to remaining layers (gate_proj, up_proj, down_proj)
     filtered_layers = []
     for layer_name, alpha_value in alpha_results.items():
+        name_lower = layer_name.lower()
+        
         # Check if this is an attention layer
-        is_attention = any(kw in layer_name.lower() for kw in ['q_proj', 'k_proj', 'v_proj', 'o_proj'])
-        # Check if this is a gate/router layer
-        is_gate = any(kw in layer_name.lower() for kw in ['gate', 'router'])
+        is_attention = any(kw in name_lower for kw in ['q_proj', 'k_proj', 'v_proj', 'o_proj'])
+        
+        # Check if this is a routing gate/router layer (NOT gate_proj/up_proj/down_proj)
+        # Skip only routing gates: ends with .gate or contains router (but not gate_proj)
+        is_routing_gate = (name_lower.endswith('.gate') or 'router' in name_lower) and 'gate_proj' not in name_lower
         
         # Skip if we're excluding these layers
-        if (skip_attention and is_attention) or (skip_gate and is_gate):
+        if (skip_attention and is_attention) or (skip_gate and is_routing_gate):
             continue
         
         filtered_layers.append((layer_name, alpha_value))
@@ -258,8 +269,9 @@ def main():
     total_alpha_layers = len(alpha_results)
     skipped_attention = sum(1 for name in alpha_results.keys() 
                            if args.skip_attention and any(kw in name.lower() for kw in ['q_proj', 'k_proj', 'v_proj', 'o_proj']))
+    # Only count routing gates (not gate_proj/up_proj/down_proj)
     skipped_gate = sum(1 for name in alpha_results.keys() 
-                      if args.skip_gate and any(kw in name.lower() for kw in ['gate', 'router']))
+                      if args.skip_gate and ((name.lower().endswith('.gate') or 'router' in name.lower()) and 'gate_proj' not in name.lower()))
     
     quantizable_layers = total_alpha_layers - skipped_attention - skipped_gate
     n_bf16 = int(quantizable_layers * args.bf16_ratio)
@@ -269,10 +281,10 @@ def main():
     logger.info(f"✓ Bitwidth allocation complete!")
     logger.info(f"  Total layers analyzed: {total_alpha_layers}")
     if args.skip_attention:
-        logger.info(f"  Skipped attention layers: {skipped_attention}")
+        logger.info(f"  Skipped attention layers (q/k/v/o_proj): {skipped_attention}")
     if args.skip_gate:
-        logger.info(f"  Skipped gate/router layers: {skipped_gate}")
-    logger.info(f"  Quantizable layers: {quantizable_layers}")
+        logger.info(f"  Skipped routing gate/router layers: {skipped_gate}")
+    logger.info(f"  Quantizable layers (mainly gate_proj/up_proj/down_proj): {quantizable_layers}")
     logger.info(f"    - bf16 layers: {n_bf16}")
     logger.info(f"    - mxfp4 layers: {n_mxfp4}")
     logger.info(f"    - mxfp8 layers: {n_mxfp8}")
