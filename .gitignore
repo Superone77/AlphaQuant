@@ -7,10 +7,22 @@ __pycache__/
 *.py[cod]
 __pycache__ copy/
 wandb/
-docs/
 search_result/
 .DS_Store
+
+# Results and temporary files
+results/
+*.pt
+*.pth
+*.bin
+
+# Archived external code
+MoEQuant/
+
+# OS files
+.DS_Store
+
+# Analysis outputs (ignore all generated analysis files)
 *.png
 *.csv
-results/
-MoEQuant/
+plots_alpha_hill/

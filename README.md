@@ -1,152 +1,318 @@
 # AlphaQuant
 
-## 🆕 GPTQ Mixed-Precision Quantization
+**Alpha-guided Mixed-Precision Quantization for Large Language Models**
 
-AlphaQuant now includes a complete GPTQ pipeline for mixed-precision post-training quantization!
+AlphaQuant is a complete quantization framework that uses Alpha-Hill sensitivity metrics to automatically determine optimal bit-width allocation for different layers in LLMs. It supports various quantization formats and includes GPTQ-based weight optimization.
 
-### Quick Start with GPTQ
+## 🎯 Key Features
 
-```bash
-# Using the CLI script
-python scripts/run_gptq.py \
-  --model meta-llama/Llama-2-7b-hf \
-  --config configs/gptq_mixed_precision.json \
-  --dataset wikitext2 \
-  --nsamples 128 \
-  --save quantized_model.pt
+- ✅ **Alpha-Hill Metric**: Quantization sensitivity measurement for layer-wise analysis
+- ✅ **Automatic Bitwidth Allocation**: Data-driven precision assignment based on sensitivity
+- ✅ **GPTQ Weight Optimization**: Hessian-based post-training quantization
+- ✅ **Mixed-Precision Support**: INT2/3/4/6/8, FP4/6/8, MXFP4/6/8
+- ✅ **MoE Model Support**: OLMoE, Mixtral, Qwen-MoE, DeepSeek-MoE
+- ✅ **Complete Pipeline**: From alpha computation to model evaluation
 
-# Or use the example script
-python examples/gptq_quantization_example.py
-```
+## 🚀 Quick Start
 
-### Features
-- ✅ Mixed-precision: INT2/3/4/6/8, FP4/6/8, MXFP4/6/8
-- ✅ GPTQ algorithm with Hessian-based optimization
-- ✅ JSON-based configuration for easy layer-wise quantization
-- ✅ Support for MoE models (OLMoE, Mixtral, Qwen-MoE)
-- ✅ RTN fallback for quick quantization
+### Complete Pipeline
 
-**📖 Full documentation**: See [GPTQ_PIPELINE_README.md](GPTQ_PIPELINE_README.md)
-
-## 🏗️ 独立模型支持（不受Transformers版本影响）
-
-AlphaQuant现在包含独立的模型定义，不再受transformers库版本限制：
-
-| 模型 | 路径 | 支持特性 |
-|------|------|----------|
-| **OLMoE** | `models/olmoe/` | Top-8 routing, GPTQ优化 |
-| **Qwen2-MoE** | `models/qwen_moe_14b_chat/` | Top-4 + Shared Expert |
-| **Mixtral** | `models/mixtral_model/` | Top-2 sparse MoE |
-| **DeepSeek-MoE** | `models/deepseek_moe_16b_chat/` | Multi-level routing |
-
-**使用方法**:
-```python
-from models.olmoe.modeling_olmoe import OlmoeForCausalLM
-model = OlmoeForCausalLM.from_pretrained("allenai/OLMoE-1B-7B-0924")
-```
-
-**📖 详细文档**: 
-- [models/README.md](models/README.md) - 模型使用指南
-- [MODEL_INTEGRATION_SUMMARY.md](MODEL_INTEGRATION_SUMMARY.md) - 集成总结
-
----
-
-## Basic Quantization & Calibration
-
-### 1) Quantize & calibrate
+Run the entire quantization pipeline with one command:
 
 ```bash
-python scripts/quantize_model.py \
-  --model meta-llama/Llama-3.2-1B \
-  --wq mxfp4 --aq mxfp8 --group 64 \
-  --include q_proj k_proj v_proj o_proj up_proj gate_proj down_proj \
-  --calib_ds wikitext --calib_split wikitext-2-raw-v1 --calib_batches 16 \
-  --save ./llama32_1b_mx48_g64
+./run_pipeline.sh <model_name> <device> <mxfp4_ratio>
+
+# Example
+./run_pipeline.sh allenai/OLMoE-1B-7B-0924 cuda 0.3
 ```
 
-### 2) Evaluate with lm-eval
+This will:
+1. Compute Alpha-Hill values for all layers
+2. Allocate bitwidth based on sensitivity (30% high-precision mxfp4, 70% mxfp8)
+3. Apply GPTQ quantization
+4. Evaluate the quantized model
+5. Generate analysis visualizations
+
+### Step-by-Step Usage
+
+#### Step 1: Compute Alpha-Hill Values
+
 ```bash
-python scripts/eval_with_lm_eval.py \
-  --pretrained ./llama32_1b_mx48_g64 \
+python 1_compute_alpha.py \
+    --model allenai/OLMoE-1B-7B-0924 \
+    --output results/alpha_values.csv \
+    --device cuda
+```
+
+**Output**: CSV file with Alpha-Hill sensitivity values for each layer.
+
+#### Step 2: Allocate Bitwidth
+
+```bash
+python 2_allocate_bitwidth.py \
+    --model allenai/OLMoE-1B-7B-0924 \
+    --alpha-csv results/alpha_values.csv \
+    --mxfp4-ratio 0.3 \
+    --output configs/auto_quant_config.json
+```
+
+**Output**: JSON configuration with layer-wise quantization settings.
+
+#### Step 3: GPTQ Quantization
+
+```bash
+python 3_gptq_quantize.py \
+    --model allenai/OLMoE-1B-7B-0924 \
+    --config configs/auto_quant_config.json \
+    --dataset wikitext2 \
+    --nsamples 128 \
+    --save results/quantized_model.pt
+```
+
+**Output**: Quantized model checkpoint with optimized weights.
+
+#### Step 4: Evaluate Model
+
+```bash
+python 4_evaluate_model.py \
+    --model allenai/OLMoE-1B-7B-0924 \
+    --checkpoint results/quantized_model.pt \
   --tasks hellaswag,arc_easy,winogrande \
-  --batch_size 8
+    --output results/eval_results.json
 ```
 
-## Layer-wise JSON config
-You can control which layers use which quantization scheme via a JSON file passed with `--layer-config`.
+**Output**: Evaluation results on downstream tasks.
 
-Example JSON (`configs/llama32_1b_mx48.json`):
+#### Step 5: Analyze Results
+
+```bash
+# Visualize alpha distribution
+python 5_analyze_results.py \
+    --mode visualize \
+    --alpha-csv results/alpha_values.csv \
+    --output results/alpha_distribution.png
+
+# Analyze alpha-MSE relationship
+python 5_analyze_results.py \
+    --mode alpha_mse \
+    --model allenai/OLMoE-1B-7B-0924 \
+    --alpha-csv results/alpha_values.csv \
+    --output results/alpha_mse_analysis.png
+```
+
+**Output**: Analysis plots and statistics.
+
+## 📁 Project Structure
+
+```
+AlphaQuant/
+├── 1_compute_alpha.py          # Step 1: Compute Alpha-Hill values
+├── 2_allocate_bitwidth.py      # Step 2: Automatic bitwidth allocation
+├── 3_gptq_quantize.py          # Step 3: GPTQ weight quantization
+├── 4_evaluate_model.py         # Step 4: Model evaluation
+├── 5_analyze_results.py        # Step 5: Results analysis
+├── run_pipeline.sh             # Complete pipeline runner
+│
+├── alphaquant/                 # Core library
+│   ├── alpha_hill/             # Alpha-Hill computation
+│   ├── gptq/                   # GPTQ quantization
+│   ├── quantizers/             # Quantizer implementations
+│   ├── modules/                # Custom modules
+│   └── utils/                  # Utilities
+│
+├── models/                     # Independent model implementations
+│   ├── olmoe/                  # OLMoE model
+│   ├── qwen_moe_14b_chat/      # Qwen2-MoE model
+│   ├── mixtral_model/          # Mixtral model
+│   └── deepseek_moe_16b_chat/  # DeepSeek-MoE model
+│
+├── configs/                    # Quantization configurations
+├── scripts/                    # Additional analysis scripts
+├── docs/                       # Documentation
+├── examples/                   # Usage examples
+├── results/                    # Output directory (auto-created)
+└── README.md                   # This file
+```
+
+## 📊 Main Functionality
+
+### 1. Alpha-Hill Computation
+
+The Alpha-Hill metric measures layer sensitivity to quantization:
+
+```python
+from alphaquant.alpha_hill.utils import alpha_hill_from_model
+from alphaquant.utils.hf_utils import load_hf_causal_lm
+
+model = load_hf_causal_lm("meta-llama/Llama-2-7b-hf")
+alpha_values = alpha_hill_from_model(model)
+```
+
+**Higher alpha = More sensitive to quantization = Needs higher precision**
+
+### 2. Automatic Bitwidth Allocation
+
+Based on alpha values, automatically assign precision:
+- Top N% sensitive layers → Keep in BF16 or use high-precision (MXFP4)
+- Moderately sensitive → Medium precision (MXFP6/8)
+- Less sensitive → Lower precision (INT4/8)
+
+### 3. GPTQ Weight Quantization
+
+Uses Hessian information to optimize quantized weights:
+- Minimizes layer-wise reconstruction error
+- Supports mixed-precision configurations
+- Special handling for MoE expert layers
+
+### 4. Model Evaluation
+
+Evaluate on standard benchmarks:
+- MMLU, HellaSwag, ARC, WinoGrande
+- GSM8K for math reasoning
+- Custom task support via lm-eval-harness
+
+### 5. Data Analysis
+
+- Alpha distribution visualization
+- Alpha-MSE relationship analysis
+- Layer-wise sensitivity comparison
+- Quantization effect analysis
+
+## 🔧 Advanced Usage
+
+### Manual Configuration
+
+Create a custom quantization config:
 
 ```json
 {
-  "default": {"wq": "mxfp8", "aq": "mxfp8", "group_size": 128},
+  "default": {
+    "wq": "mxfp8",
+    "aq": "mxfp8",
+    "group_size": 128
+  },
   "overrides": [
-    {"pattern": "model.layers.0.*", "wq": "mxfp4"},
-    {"pattern": "model.layers.*.q_proj", "wq": "mxfp4", "group_size": 64}
+    {
+      "pattern": "model.layers.0.*",
+      "wq": "mxfp4",
+      "group_size": 64,
+      "comment": "First layer - use high precision"
+    },
+    {
+      "pattern": "*.experts.*",
+      "wq": "mxfp6",
+      "comment": "Expert layers - medium precision"
+    }
   ]
 }
 ```
 
-- **pattern**: glob pattern matched against names from `model.named_modules()`, e.g., `model.layers.12.q_proj`.
-- **default**: base scheme applied to all matched target modules before overrides.
-- Any extra fields (e.g., `block_size`) are passed through for your scheme implementation to consume.
+### Using Core Scripts Directly
 
-Dry-run to preview the plan (no model load required):
+For more control, use the scripts in `scripts/` directory:
 
 ```bash
-python scripts/quantize_model.py \
-  --layer-config configs/llama32_1b_mx48.json \
-  --dry-run --save-plan ./plans/llama32_1b_mx48_preview.json
-```
-
-Expand the plan against a specific model (loads the model):
-
-```bash
-python scripts/quantize_model.py \
-  --model meta-llama/Llama-3.2-1B \
-  --device cpu \
-  --dtype fp32 \
-  --layer-config configs/llama32_1b_mx48.json \
-  --save-plan ./plans/llama32_1b_mx48_expanded.json
-```
-
-Note: This only produces a mapping plan. Hook your actual replacement/quantization logic where needed (e.g., apply the plan to replace `nn.Linear` with `QuantLinear`).
-
-### Notes
-- You can also set `"skip": true` in an override to explicitly exclude matched modules from quantization in the planning stage.
-- An OLMoE-oriented preset is available at `configs/olmoe_mixed_quant.json`:
-  - Skip all `*.mlp.gate*` and `*lm_head*`
-  - Quantize all attention layers with MXFP8
-  - Inside `*.experts.*`, set `{gate_proj,up_proj,down_proj}` to MXFP4
-
-Example usage:
-```bash
-python scripts/quantize_model.py \
-  --model allenai/OLMoE-1B \
-  --device cuda \
-  --dtype bf16 \
-  --layer-config configs/olmoe_mixed_quant.json \
-  --save-plan ./plans/olmoe_mixed_expanded.json
-```
-```
-export CUDA_VISIBLE_DEVICES=3
-
+# Alpha-Hill quantization with custom ratios
 python scripts/alpha_hill_quantization.py \
-    --model "/local/mnt2/workspace/wanqi/tmp/LLM-Research/OLMoE-1B-7B-0924-Instruct" \
+    --model <model> \
     --mxfp4-ratio 0.3 \
-    --output-config "results/quant_alpha_quant.json" \
-    --output-csv "results/alpha_hill_results.csv"
+    --bf16-ratio 0.1 \
+    --output-config configs/custom.json
 
-python scripts/quantize_model.py \
-  --model /local/mnt2/workspace/wanqi/tmp/LLM-Research/OLMoE-1B-7B-0924-Instruct \
-  --device cuda \
-  --dtype bf16 \
-  --layer-config results/quant_alpha_quant.json \
-  --save-plan ./plans/olmoe_mixed_alpha.json
+# GPTQ with custom settings
+python scripts/run_gptq.py \
+    --model <model> \
+    --config configs/custom.json \
+    --dataset c4 \
+    --groupsize 64 \
+    --actorder
 
+# Evaluation with quantization plan
 python scripts/eval_with_plans.py \
-  --model /local/mnt2/workspace/wanqi/tmp/LLM-Research/OLMoE-1B-7B-0924-Instruct \
-  --tasks gsm8k \
-  --plan ./plans/olmoe_mxfp4.json \
-  --batch_size 32
+    --model <model> \
+    --plan configs/custom.json \
+    --tasks gsm8k,mmlu
 ```
+
+## 📖 Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **`docs/GPTQ_PIPELINE_README.md`** - GPTQ implementation details
+- **`docs/GPTQ_QUICKSTART.md`** - Quick start guide for GPTQ
+- **`docs/MODEL_INTEGRATION_SUMMARY.md`** - MoE model integration guide
+- **`docs/GROUP_QUANTIZATION_README.md`** - Group quantization documentation
+- **`models/README.md`** - Model usage and architecture details
+- **`scripts/README.md`** - Script documentation
+
+## 🔬 Supported Quantization Formats
+
+| Format | Bits | Description | Use Case |
+|--------|------|-------------|----------|
+| **INT2-8** | 2-8 | Integer quantization | High compression |
+| **FP4/6/8** | 4-8 | Floating point | Better dynamic range |
+| **MXFP4/6/8** | 4-8 | Microscaling FP | Optimal accuracy/size |
+| **BF16** | 16 | Keep original | Sensitive layers |
+
+## 🎓 Supported Models
+
+AlphaQuant includes independent model implementations (no transformers version dependency):
+
+| Model | Path | Special Features |
+|-------|------|------------------|
+| **OLMoE** | `models/olmoe/` | Top-8 routing |
+| **Qwen2-MoE** | `models/qwen_moe_14b_chat/` | Shared expert |
+| **Mixtral** | `models/mixtral_model/` | Top-2 sparse MoE |
+| **DeepSeek-MoE** | `models/deepseek_moe_16b_chat/` | Multi-level routing |
+
+## 📦 Installation
+
+```bash
+# Clone repository
+git clone <your-repo-url>
+cd AlphaQuant
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Make scripts executable
+chmod +x run_pipeline.sh
+```
+
+## 🧪 Example Results
+
+Typical results on OLMoE-1B-7B model:
+
+| Configuration | Avg Bits | MMLU | HellaSwag | Model Size |
+|---------------|----------|------|-----------|------------|
+| BF16 (baseline) | 16.0 | 0.XX | 0.XX | 100% |
+| Alpha-based (30% MXFP4) | 6.4 | 0.XX | 0.XX | 40% |
+| Uniform MXFP8 | 8.0 | 0.XX | 0.XX | 50% |
+
+*Fill in actual results from your experiments*
+
+## 🤝 Contributing
+
+This is a research project. Feel free to:
+- Report issues
+- Suggest improvements
+- Add new quantization methods
+- Extend MoE model support
+
+## 📄 License
+
+[Add your license here]
+
+## 🙏 Acknowledgments
+
+- GPTQ: [IST-DASLab/gptq](https://github.com/IST-DASLab/gptq)
+- MoEQuant: Quantization strategies for MoE models
+- lm-evaluation-harness: Model evaluation framework
+
+## 📧 Contact
+
+[Add your contact information]
+
+---
+
+**For detailed workflow and technical documentation, see the `docs/` directory.**
