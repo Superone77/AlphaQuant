@@ -220,6 +220,14 @@ def alpha_hill_from_model(
         shape = (out_features, in_features)
         category = categorize(name)
         
+        # Transpose down_proj weights to match gate_proj/up_proj shape for fair comparison
+        # down_proj: [hidden_dim, intermediate_dim] -> [intermediate_dim, hidden_dim]
+        # This ensures alpha calculation is consistent across all MLP/Expert projections
+        if category == "mlp_down":
+            weight = weight.T.contiguous()
+            # Update shape to reflect the transposed weight
+            shape = (in_features, out_features)
+        
         try:
             # Compute alpha hill
             alpha, k_used, n_eigs, method = alpha_hill_from_weight(
@@ -337,6 +345,13 @@ if __name__ == '__main__':
 
         w = w.contiguous()
         out_f, in_f = safe_get_in_out_features(mod)
+        category = categorize(name)
+        
+        # Transpose down_proj weights to match gate_proj/up_proj shape for fair comparison
+        if category == "mlp_down":
+            w = w.T.contiguous()
+            out_f, in_f = in_f, out_f  # Swap dimensions after transpose
+        
         shape_str = f"[{out_f}, {in_f}]"
         numel = int(w.numel())
         dtype_str = str(w.dtype).replace("torch.", "")
