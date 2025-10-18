@@ -94,8 +94,14 @@ def gptq_quantize_model(
     else:
         seqlen = first_batch.shape[1] if len(first_batch.shape) > 1 else 2048
     
-    nsamples = len(list(dataloader))
+    # Count actual number of samples
+    nsamples = 0
+    for _ in dataloader:
+        nsamples += 1
+    
     inps = torch.zeros((nsamples, seqlen, hidden_size), dtype=dtype_model, device=device)
+    
+    cache = {'i': 0, 'attention_mask': None, 'position_ids': None, 'position_embeddings': None}
     
     # Catcher to intercept inputs
     class Catcher(nn.Module):
@@ -108,6 +114,7 @@ def gptq_quantize_model(
             cache['i'] += 1
             cache['attention_mask'] = kwargs.get('attention_mask', None)
             cache['position_ids'] = kwargs.get('position_ids', None)
+            cache['position_embeddings'] = kwargs.get('position_embeddings', None)
             raise ValueError  # Stop forward pass
     
     layers[0] = Catcher(layers[0])
@@ -130,6 +137,7 @@ def gptq_quantize_model(
     outs = torch.zeros_like(inps)
     attention_mask = cache['attention_mask']
     position_ids = cache['position_ids']
+    position_embeddings = cache['position_embeddings']
     
     quantizers = {}
     
@@ -186,10 +194,18 @@ def gptq_quantize_model(
             
             # Forward pass to collect Hessian
             for j in range(nsamples):
+                # Prepare forward kwargs
+                forward_kwargs = {
+                    'attention_mask': attention_mask,
+                }
+                if position_ids is not None:
+                    forward_kwargs['position_ids'] = position_ids
+                if position_embeddings is not None:
+                    forward_kwargs['position_embeddings'] = position_embeddings
+                
                 outs[j] = layer(
                     inps[j].unsqueeze(0),
-                    attention_mask=attention_mask,
-                    position_ids=position_ids
+                    **forward_kwargs
                 )[0]
             
             handle.remove()
@@ -210,10 +226,18 @@ def gptq_quantize_model(
         
         # Forward pass with quantized weights to get outputs for next layer
         for j in range(nsamples):
+            # Prepare forward kwargs
+            forward_kwargs = {
+                'attention_mask': attention_mask,
+            }
+            if position_ids is not None:
+                forward_kwargs['position_ids'] = position_ids
+            if position_embeddings is not None:
+                forward_kwargs['position_embeddings'] = position_embeddings
+            
             outs[j] = layer(
                 inps[j].unsqueeze(0),
-                attention_mask=attention_mask,
-                position_ids=position_ids
+                **forward_kwargs
             )[0]
         
         layers[i] = layer.cpu()
