@@ -6,12 +6,24 @@ This script automatically assigns quantization precision to each layer
 based on Alpha-Hill sensitivity values. Layers with higher alpha values
 (more sensitive) get higher precision.
 
+By default, attention layers (q_proj, k_proj, v_proj, o_proj) and 
+gate/router layers are NOT quantized as they are critical for model performance.
+
 Usage:
+    # Basic usage (skips attention and gate layers by default)
     python 2_allocate_bitwidth.py \\
         --model allenai/OLMoE-1B-7B-0924 \\
         --alpha-csv results/alpha_values.csv \\
         --mxfp4-ratio 0.3 \\
         --output configs/auto_quant_config.json
+    
+    # Quantize everything including attention layers
+    python 2_allocate_bitwidth.py \\
+        --model allenai/OLMoE-1B-7B-0924 \\
+        --alpha-csv results/alpha_values.csv \\
+        --no-skip-attention \\
+        --no-skip-gate \\
+        --output configs/aggressive_quant.json
 
 Output:
     - JSON config file with layer-wise quantization settings
@@ -35,7 +47,9 @@ from alphaquant.utils.hf_utils import load_hf_causal_lm
 def create_quantization_config(
     alpha_results: Dict[str, float],
     mxfp4_ratio: float = 0.3,
-    bf16_ratio: float = 0.0
+    bf16_ratio: float = 0.0,
+    skip_attention: bool = True,
+    skip_gate: bool = True
 ) -> Dict[str, Any]:
     """
     Create quantization config based on Alpha-Hill values.
@@ -44,18 +58,12 @@ def create_quantization_config(
         alpha_results: Dict mapping layer names to alpha values
         mxfp4_ratio: Ratio of layers to use mxfp4 (high precision for sensitive layers)
         bf16_ratio: Ratio of layers to keep in bf16 (skip quantization)
+        skip_attention: Skip quantizing attention layers (q_proj, k_proj, v_proj, o_proj)
+        skip_gate: Skip quantizing gate/router layers
     
     Returns:
         Quantization config dict
     """
-    # Sort layers by alpha value (descending)
-    sorted_layers = sorted(alpha_results.items(), key=lambda x: x[1], reverse=True)
-    total_layers = len(sorted_layers)
-    
-    # Calculate thresholds
-    n_bf16 = int(total_layers * bf16_ratio)
-    n_mxfp4 = int(total_layers * mxfp4_ratio)
-    
     # Create config
     config = {
         "default": {
@@ -66,7 +74,49 @@ def create_quantization_config(
         "overrides": []
     }
     
-    # Assign precision based on alpha values
+    # Skip attention layers by default (more sensitive to quantization)
+    if skip_attention:
+        attention_patterns = ["*.q_proj", "*.k_proj", "*.v_proj", "*.o_proj"]
+        for pattern in attention_patterns:
+            config["overrides"].append({
+                "pattern": pattern,
+                "skip": True,
+                "comment": "Skip attention layer (sensitive)"
+            })
+    
+    # Skip gate/router layers by default (critical for MoE routing)
+    if skip_gate:
+        gate_patterns = ["*.gate", "*.router", "*gate_proj*", "*router*"]
+        for pattern in gate_patterns:
+            config["overrides"].append({
+                "pattern": pattern,
+                "skip": True,
+                "comment": "Skip gate/router layer (critical for routing)"
+            })
+    
+    # Filter out attention and gate layers from alpha-based allocation
+    filtered_layers = []
+    for layer_name, alpha_value in alpha_results.items():
+        # Check if this is an attention layer
+        is_attention = any(kw in layer_name.lower() for kw in ['q_proj', 'k_proj', 'v_proj', 'o_proj'])
+        # Check if this is a gate/router layer
+        is_gate = any(kw in layer_name.lower() for kw in ['gate', 'router'])
+        
+        # Skip if we're excluding these layers
+        if (skip_attention and is_attention) or (skip_gate and is_gate):
+            continue
+        
+        filtered_layers.append((layer_name, alpha_value))
+    
+    # Sort remaining layers by alpha value (descending)
+    sorted_layers = sorted(filtered_layers, key=lambda x: x[1], reverse=True)
+    total_layers = len(sorted_layers)
+    
+    # Calculate thresholds
+    n_bf16 = int(total_layers * bf16_ratio)
+    n_mxfp4 = int(total_layers * mxfp4_ratio)
+    
+    # Assign precision based on alpha values for remaining layers
     for idx, (layer_name, alpha_value) in enumerate(sorted_layers):
         if idx < n_bf16:
             # Most sensitive: keep in bf16
@@ -114,6 +164,30 @@ def parse_args():
         type=float,
         default=0.0,
         help="Ratio of layers to keep in bf16 (0.0-1.0)"
+    )
+    parser.add_argument(
+        "--skip-attention",
+        action="store_true",
+        default=True,
+        help="Skip quantizing attention layers (q_proj, k_proj, v_proj, o_proj) [default: True]"
+    )
+    parser.add_argument(
+        "--no-skip-attention",
+        dest="skip_attention",
+        action="store_false",
+        help="Quantize attention layers"
+    )
+    parser.add_argument(
+        "--skip-gate",
+        action="store_true",
+        default=True,
+        help="Skip quantizing gate/router layers [default: True]"
+    )
+    parser.add_argument(
+        "--no-skip-gate",
+        dest="skip_gate",
+        action="store_false",
+        help="Quantize gate/router layers"
     )
     parser.add_argument(
         "--output",
@@ -164,11 +238,15 @@ def main():
     logger.info("Creating quantization configuration...")
     logger.info(f"  mxfp4 ratio: {args.mxfp4_ratio}")
     logger.info(f"  bf16 ratio: {args.bf16_ratio}")
+    logger.info(f"  Skip attention layers: {args.skip_attention}")
+    logger.info(f"  Skip gate/router layers: {args.skip_gate}")
     
     config = create_quantization_config(
         alpha_results,
         mxfp4_ratio=args.mxfp4_ratio,
-        bf16_ratio=args.bf16_ratio
+        bf16_ratio=args.bf16_ratio,
+        skip_attention=args.skip_attention,
+        skip_gate=args.skip_gate
     )
     
     # Save config
@@ -176,11 +254,28 @@ def main():
     with open(args.output, 'w') as f:
         json.dump(config, f, indent=2)
     
+    # Count skipped layers
+    total_alpha_layers = len(alpha_results)
+    skipped_attention = sum(1 for name in alpha_results.keys() 
+                           if args.skip_attention and any(kw in name.lower() for kw in ['q_proj', 'k_proj', 'v_proj', 'o_proj']))
+    skipped_gate = sum(1 for name in alpha_results.keys() 
+                      if args.skip_gate and any(kw in name.lower() for kw in ['gate', 'router']))
+    
+    quantizable_layers = total_alpha_layers - skipped_attention - skipped_gate
+    n_bf16 = int(quantizable_layers * args.bf16_ratio)
+    n_mxfp4 = int(quantizable_layers * args.mxfp4_ratio)
+    n_mxfp8 = quantizable_layers - n_bf16 - n_mxfp4
+    
     logger.info(f"✓ Bitwidth allocation complete!")
-    logger.info(f"  Total layers: {len(alpha_results)}")
-    logger.info(f"  bf16 layers: {int(len(alpha_results) * args.bf16_ratio)}")
-    logger.info(f"  mxfp4 layers: {int(len(alpha_results) * args.mxfp4_ratio)}")
-    logger.info(f"  mxfp8 layers: {len(alpha_results) - int(len(alpha_results) * (args.bf16_ratio + args.mxfp4_ratio))}")
+    logger.info(f"  Total layers analyzed: {total_alpha_layers}")
+    if args.skip_attention:
+        logger.info(f"  Skipped attention layers: {skipped_attention}")
+    if args.skip_gate:
+        logger.info(f"  Skipped gate/router layers: {skipped_gate}")
+    logger.info(f"  Quantizable layers: {quantizable_layers}")
+    logger.info(f"    - bf16 layers: {n_bf16}")
+    logger.info(f"    - mxfp4 layers: {n_mxfp4}")
+    logger.info(f"    - mxfp8 layers: {n_mxfp8}")
     logger.info(f"\nNext step: Use 3_gptq_quantize.py to quantize the model")
 
 

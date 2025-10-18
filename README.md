@@ -58,6 +58,8 @@ python 2_allocate_bitwidth.py \
 
 **Output**: JSON configuration with layer-wise quantization settings.
 
+**Note**: By default, attention layers (q_proj, k_proj, v_proj, o_proj) and gate/router layers are **NOT quantized** as they are critical for model performance. Use `--no-skip-attention` or `--no-skip-gate` to override this behavior.
+
 #### Step 3: GPTQ Quantization
 
 ```bash
