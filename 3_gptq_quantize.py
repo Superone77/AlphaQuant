@@ -159,8 +159,11 @@ def main():
     
     # Plan quantization scheme
     logger.info("Planning quantization scheme...")
-    plan = plan_model_layer_schemes(model, config)
+    plan_list = plan_model_layer_schemes(model, config)
+    # Convert plan from list of tuples to dictionary
+    plan = {layer_name: scheme for layer_name, scheme in plan_list}
     logger.info(summarize_config(config))
+    logger.info(f"Planned quantization for {len(plan)} layers")
     
     # Load calibration data
     logger.info(f"Loading calibration dataset: {args.dataset}")
@@ -175,7 +178,7 @@ def main():
     # Apply quantization
     if args.use_rtn or not args.use_gptq:
         logger.info("Using RTN (Round-To-Nearest) quantization")
-        quantized_model = rtn_quantize_model(model, plan)
+        quantizers = rtn_quantize_model(model, plan)
     else:
         logger.info("Using GPTQ quantization")
         if args.use_hadamard:
@@ -186,7 +189,7 @@ def main():
             percdamp=0.01,
             use_hadamard=args.use_hadamard
         )
-        quantized_model = gptq_quantize_model(
+        quantizers = gptq_quantize_model(
             model=model,
             layer_config=plan,
             dataloader=dataloader,
@@ -196,9 +199,10 @@ def main():
     # Save quantized model
     logger.info(f"Saving quantized model to: {args.save}")
     torch.save({
-        'model_state_dict': quantized_model.state_dict(),
+        'model_state_dict': model.state_dict(),
         'config': config,
-        'plan': plan
+        'plan': plan,
+        'quantizers': quantizers
     }, args.save)
     
     logger.info("✓ GPTQ quantization complete!")
