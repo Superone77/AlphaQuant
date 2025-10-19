@@ -28,7 +28,7 @@ from lm_eval.models.huggingface import HFLM
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from alphaquant.utils.eval_utils import make_table
-from gsm8k_analysis.eval_utils import save_samples_with_reasoning, NumpyEncoder
+from gsm8k_analysis.eval_utils import log_samples_with_reasoning
 
 
 def parse_args():
@@ -136,14 +136,12 @@ def main():
     print("=" * 70)
     print(make_table(results))
     
-    # Save aggregate results
-    print(f"\nSaving aggregate results to: {args.output}")
-    with open(args.output, 'w') as f:
-        json.dump(results, f, indent=2, cls=NumpyEncoder)
+    # Note: Skipping aggregate results JSON due to serialization issues
+    # The summary table above shows the key metrics
     
-    # Save detailed sample-level results with reasoning
-    detailed_output = args.output.replace('.json', '_samples.json')
-    save_samples_with_reasoning(results, detailed_output, task_name="gsm8k")
+    # Log detailed sample-level results to text file
+    log_output = args.output.replace('.json', '_samples.log')
+    log_samples_with_reasoning(results, log_output, task_name="gsm8k")
     
     # Extract accuracy
     if 'results' in results and 'gsm8k' in results['results']:
@@ -153,8 +151,7 @@ def main():
             print(f"\nGSM8K Accuracy: {accuracy:.4f}")
     
     print("\n✓ Step 1 complete!")
-    print(f"  - Aggregate results: {args.output}")
-    print(f"  - Detailed samples: {detailed_output}")
+    print(f"  - Detailed samples log: {log_output}")
 
 
 if __name__ == '__main__':

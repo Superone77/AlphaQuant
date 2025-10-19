@@ -1,82 +1,96 @@
 """
-Evaluation utilities for saving detailed sample-level results.
+Evaluation utilities for logging detailed sample-level results.
 
-This module provides functions to save detailed evaluation results including
-questions, model answers, and reasoning processes.
+This module provides functions to log detailed evaluation results including
+questions, model answers, and reasoning processes to text files.
 """
 
-import json
-import numpy as np
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 
 
-class NumpyEncoder(json.JSONEncoder):
-    """Custom JSON encoder that handles numpy types."""
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, np.bool_):
-            return bool(obj)
-        elif hasattr(obj, 'dtype'):
-            # Handle numpy dtypes
-            return str(obj)
-        return super(NumpyEncoder, self).default(obj)
-
-
-def save_detailed_samples(
+def log_samples_to_file(
     results: Dict[str, Any],
     output_path: str,
     task_name: str = "gsm8k"
 ):
     """
-    Save detailed sample-level results from lm_eval.
+    Log detailed sample-level results to a text file.
     
     Args:
         results: Results dictionary from lm_eval
-        output_path: Path to save the detailed samples JSON
+        output_path: Path to save the log file
         task_name: Name of the task (default: gsm8k)
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Extract samples if available
-    samples = []
-    if 'samples' in results and task_name in results['samples']:
-        raw_samples = results['samples'][task_name]
+    if 'samples' not in results or task_name not in results['samples']:
+        print(f"Warning: No samples found for task {task_name}")
+        return 0
+    
+    raw_samples = results['samples'][task_name]
+    
+    # Write to log file
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write("=" * 100 + "\n")
+        f.write(f"GSM8K Evaluation Samples - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Total Samples: {len(raw_samples)}\n")
+        f.write("=" * 100 + "\n\n")
+        
+        correct_count = 0
         
         for idx, sample in enumerate(raw_samples):
-            sample_data = {
-                'index': idx,
-                'question': sample.get('doc', {}).get('question', ''),
-                'gold_answer': sample.get('doc', {}).get('answer', ''),
-                'model_output': sample.get('resps', [['']])[0][0] if 'resps' in sample else '',
-                'model_answer': sample.get('filtered_resps', [''])[0] if 'filtered_resps' in sample else '',
-                'correct': sample.get('exact_match,strict-match', False),
-                'doc_id': sample.get('doc_id', idx),
-                'arguments': sample.get('arguments', [])
-            }
-            samples.append(sample_data)
+            # Extract information
+            question = sample.get('doc', {}).get('question', '')
+            gold_answer = sample.get('doc', {}).get('answer', '')
+            
+            # Get model output
+            model_output = ''
+            if 'resps' in sample and len(sample['resps']) > 0:
+                if len(sample['resps'][0]) > 0:
+                    model_output = str(sample['resps'][0][0])
+            
+            # Check correctness
+            is_correct = sample.get('exact_match,strict-match', False)
+            if is_correct:
+                correct_count += 1
+            
+            # Extract reasoning and answer
+            reasoning_data = extract_reasoning_from_output(model_output)
+            
+            # Write to log
+            f.write(f"{'='*100}\n")
+            f.write(f"Sample #{idx + 1}\n")
+            f.write(f"{'='*100}\n\n")
+            
+            f.write(f"Question:\n{question}\n\n")
+            
+            f.write(f"Gold Answer:\n{gold_answer}\n\n")
+            
+            f.write(f"Model Reasoning:\n{reasoning_data['reasoning']}\n\n")
+            
+            f.write(f"Model Final Answer:\n{reasoning_data['final_answer']}\n\n")
+            
+            f.write(f"Correct: {'✓ YES' if is_correct else '✗ NO'}\n\n")
+            
+            f.write(f"Full Model Output:\n{'-'*50}\n{model_output}\n{'-'*50}\n\n")
+        
+        # Summary at the end
+        f.write("=" * 100 + "\n")
+        f.write("SUMMARY\n")
+        f.write("=" * 100 + "\n")
+        f.write(f"Total Samples: {len(raw_samples)}\n")
+        f.write(f"Correct: {correct_count}\n")
+        f.write(f"Incorrect: {len(raw_samples) - correct_count}\n")
+        f.write(f"Accuracy: {correct_count / len(raw_samples):.4f} ({correct_count}/{len(raw_samples)})\n")
     
-    # Save to JSON
-    detailed_results = {
-        'timestamp': datetime.now().isoformat(),
-        'task': task_name,
-        'total_samples': len(samples),
-        'samples': samples
-    }
+    print(f"\n📝 Logged {len(raw_samples)} samples to: {output_path}")
+    print(f"   Correct: {correct_count}/{len(raw_samples)} ({correct_count/len(raw_samples):.2%})")
     
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(detailed_results, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
-    
-    print(f"Saved {len(samples)} detailed samples to: {output_path}")
-    
-    return len(samples)
+    return len(raw_samples)
 
 
 def extract_reasoning_from_output(output: str) -> Dict[str, str]:
@@ -109,76 +123,18 @@ def extract_reasoning_from_output(output: str) -> Dict[str, str]:
     }
 
 
-def save_samples_with_reasoning(
+def log_samples_with_reasoning(
     results: Dict[str, Any],
     output_path: str,
     task_name: str = "gsm8k"
 ):
     """
-    Save detailed samples with extracted reasoning process.
+    Log detailed samples with extracted reasoning process to a text file.
     
     Args:
         results: Results dictionary from lm_eval
-        output_path: Path to save the detailed samples JSON
+        output_path: Path to save the log file
         task_name: Name of the task
     """
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    samples = []
-    if 'samples' in results and task_name in results['samples']:
-        raw_samples = results['samples'][task_name]
-        
-        for idx, sample in enumerate(raw_samples):
-            # Get model output
-            model_output = ''
-            if 'resps' in sample and len(sample['resps']) > 0:
-                if len(sample['resps'][0]) > 0:
-                    model_output = sample['resps'][0][0]
-            
-            # Extract reasoning
-            reasoning_data = extract_reasoning_from_output(model_output)
-            
-            sample_data = {
-                'index': idx,
-                'doc_id': sample.get('doc_id', idx),
-                'question': sample.get('doc', {}).get('question', ''),
-                'gold_answer': sample.get('doc', {}).get('answer', ''),
-                'model_reasoning': reasoning_data['reasoning'],
-                'model_final_answer': reasoning_data['final_answer'],
-                'model_full_output': reasoning_data['full_output'],
-                'correct': sample.get('exact_match,strict-match', None),
-                'metrics': {
-                    key: value for key, value in sample.items()
-                    if key not in ['doc', 'resps', 'filtered_resps', 'arguments']
-                }
-            }
-            samples.append(sample_data)
-    
-    # Calculate statistics
-    correct_count = sum(1 for s in samples if s.get('correct', False))
-    accuracy = correct_count / len(samples) if samples else 0
-    
-    detailed_results = {
-        'timestamp': datetime.now().isoformat(),
-        'task': task_name,
-        'statistics': {
-            'total_samples': len(samples),
-            'correct': correct_count,
-            'incorrect': len(samples) - correct_count,
-            'accuracy': accuracy
-        },
-        'samples': samples
-    }
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(detailed_results, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
-    
-    print(f"\n📊 Detailed sample results:")
-    print(f"  - Total samples: {len(samples)}")
-    print(f"  - Correct: {correct_count}")
-    print(f"  - Accuracy: {accuracy:.4f}")
-    print(f"  - Saved to: {output_path}")
-    
-    return detailed_results
+    return log_samples_to_file(results, output_path, task_name)
 
