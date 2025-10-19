@@ -1,0 +1,240 @@
+"""
+Analyze and compare GSM8K results from different quantization methods.
+
+This script loads results from baseline and quantized models and creates
+comparison tables and visualizations.
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Add project root to path
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import argparse
+import json
+import pandas as pd
+from typing import Dict, Any
+
+
+def extract_accuracy(result_file: Path) -> Dict[str, Any]:
+    """
+    Extract accuracy metrics from a result JSON file.
+    
+    Args:
+        result_file: Path to result JSON file
+        
+    Returns:
+        Dictionary with extracted metrics
+    """
+    with open(result_file, 'r') as f:
+        data = json.load(f)
+    
+    # Handle different result formats
+    results = data.get('results', data)
+    
+    # Extract GSM8K results
+    if 'results' in results and 'gsm8k' in results['results']:
+        gsm8k_results = results['results']['gsm8k']
+    elif 'gsm8k' in results:
+        gsm8k_results = results['gsm8k']
+    else:
+        return {"error": "No GSM8K results found"}
+    
+    # Extract metrics
+    metrics = {}
+    
+    # Try different accuracy metric names
+    for key in ['exact_match,strict-match', 'exact_match', 'acc']:
+        if key in gsm8k_results:
+            metrics['accuracy'] = gsm8k_results[key]
+            break
+    
+    # Extract stderr if available
+    for key in ['exact_match,strict-match_stderr', 'exact_match_stderr', 'acc_stderr']:
+        if key in gsm8k_results:
+            metrics['stderr'] = gsm8k_results[key]
+            break
+    
+    # Add metadata
+    if 'calibration_data' in data:
+        metrics['calibration_data'] = data['calibration_data']
+    if 'num_quantized_layers' in data:
+        metrics['num_quantized_layers'] = data['num_quantized_layers']
+    if 'bits' in data:
+        metrics['bits'] = data['bits']
+    
+    return metrics
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Analyze GSM8K quantization results"
+    )
+    
+    parser.add_argument(
+        "--summary",
+        type=str,
+        required=True,
+        help="Path to pipeline summary JSON file"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Output file for comparison table (default: auto-generated)"
+    )
+    
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    
+    print("=" * 60)
+    print("GSM8K Results Analysis")
+    print("=" * 60)
+    
+    # Load summary
+    summary_path = Path(args.summary)
+    with open(summary_path, 'r') as f:
+        summary = json.load(f)
+    
+    print(f"\nLoading results from: {summary_path}")
+    print(f"Model: {summary.get('model', 'Unknown')}")
+    print(f"Samples: {summary.get('num_samples', 'Unknown')}")
+    print(f"Timestamp: {summary.get('timestamp', 'Unknown')}")
+    
+    # Extract results from all experiments
+    comparison_data = []
+    
+    for exp_name, result_file in summary.get('experiments', {}).items():
+        print(f"\nProcessing {exp_name}...")
+        result_path = Path(result_file)
+        
+        if not result_path.exists():
+            print(f"  ⚠ File not found: {result_file}")
+            continue
+        
+        metrics = extract_accuracy(result_path)
+        
+        if 'error' in metrics:
+            print(f"  ⚠ {metrics['error']}")
+            continue
+        
+        # Create row for comparison
+        row = {
+            'Experiment': exp_name,
+            'Accuracy': metrics.get('accuracy', 'N/A'),
+            'Stderr': metrics.get('stderr', 'N/A'),
+            'Calibration': metrics.get('calibration_data', 'N/A'),
+            'Quantized Layers': metrics.get('num_quantized_layers', 'N/A'),
+            'Bits': metrics.get('bits', 'N/A')
+        }
+        
+        comparison_data.append(row)
+        print(f"  ✓ Accuracy: {metrics.get('accuracy', 'N/A'):.4f}" if isinstance(metrics.get('accuracy'), float) else f"  ✓ Accuracy: {metrics.get('accuracy')}")
+    
+    # Create comparison DataFrame
+    df = pd.DataFrame(comparison_data)
+    
+    # Sort by accuracy (descending)
+    if 'Accuracy' in df.columns and df['Accuracy'].dtype in [float, int]:
+        df = df.sort_values('Accuracy', ascending=False)
+    
+    # Print comparison table
+    print("\n" + "=" * 60)
+    print("Comparison Table")
+    print("=" * 60)
+    print(df.to_string(index=False))
+    
+    # Calculate accuracy drops
+    if len(df) > 0 and 'baseline' in df['Experiment'].values:
+        baseline_acc = df[df['Experiment'] == 'baseline']['Accuracy'].values[0]
+        
+        print("\n" + "=" * 60)
+        print("Accuracy Drop from Baseline")
+        print("=" * 60)
+        
+        for _, row in df.iterrows():
+            if row['Experiment'] != 'baseline':
+                acc = row['Accuracy']
+                if isinstance(acc, (float, int)) and isinstance(baseline_acc, (float, int)):
+                    drop = baseline_acc - acc
+                    drop_pct = (drop / baseline_acc) * 100
+                    print(f"{row['Experiment']:20s}: {drop:+.4f} ({drop_pct:+.2f}%)")
+    
+    # Save comparison table
+    if args.output is None:
+        timestamp = summary.get('timestamp', 'unknown')
+        args.output = f"gsm8k_analysis/results/comparison_{timestamp}.csv"
+    
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    df.to_csv(output_path, index=False)
+    print(f"\n✓ Comparison table saved to: {output_path}")
+    
+    # Save detailed analysis
+    analysis_output = output_path.with_suffix('.txt')
+    with open(analysis_output, 'w') as f:
+        f.write("=" * 60 + "\n")
+        f.write("GSM8K Quantization Analysis\n")
+        f.write("=" * 60 + "\n\n")
+        
+        f.write(f"Model: {summary.get('model', 'Unknown')}\n")
+        f.write(f"Samples: {summary.get('num_samples', 'Unknown')}\n")
+        f.write(f"Timestamp: {summary.get('timestamp', 'Unknown')}\n\n")
+        
+        f.write("=" * 60 + "\n")
+        f.write("Results\n")
+        f.write("=" * 60 + "\n\n")
+        f.write(df.to_string(index=False))
+        f.write("\n\n")
+        
+        if len(df) > 0 and 'baseline' in df['Experiment'].values:
+            baseline_acc = df[df['Experiment'] == 'baseline']['Accuracy'].values[0]
+            
+            f.write("=" * 60 + "\n")
+            f.write("Accuracy Drop from Baseline\n")
+            f.write("=" * 60 + "\n\n")
+            
+            for _, row in df.iterrows():
+                if row['Experiment'] != 'baseline':
+                    acc = row['Accuracy']
+                    if isinstance(acc, (float, int)) and isinstance(baseline_acc, (float, int)):
+                        drop = baseline_acc - acc
+                        drop_pct = (drop / baseline_acc) * 100
+                        f.write(f"{row['Experiment']:20s}: {drop:+.4f} ({drop_pct:+.2f}%)\n")
+        
+        f.write("\n" + "=" * 60 + "\n")
+        f.write("Key Findings\n")
+        f.write("=" * 60 + "\n\n")
+        
+        if len(df) > 1:
+            # Find best quantization method
+            quant_methods = df[df['Experiment'] != 'baseline']
+            if len(quant_methods) > 0:
+                best = quant_methods.iloc[0]
+                f.write(f"Best quantization method: {best['Experiment']}\n")
+                f.write(f"  Accuracy: {best['Accuracy']:.4f}\n")
+                if 'Calibration' in best and best['Calibration'] != 'N/A':
+                    f.write(f"  Calibration: {best['Calibration']}\n")
+                
+                # Compare GPTQ methods if both exist
+                gptq_methods = df[df['Experiment'].str.contains('gptq')]
+                if len(gptq_methods) >= 2:
+                    f.write("\nGPTQ Calibration Comparison:\n")
+                    for _, row in gptq_methods.iterrows():
+                        f.write(f"  {row['Calibration']:10s}: {row['Accuracy']:.4f}\n")
+    
+    print(f"✓ Detailed analysis saved to: {analysis_output}")
+    print("\n✓ Analysis complete!")
+
+
+if __name__ == '__main__':
+    main()
+
