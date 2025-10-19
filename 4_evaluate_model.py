@@ -168,27 +168,42 @@ def main():
         batch_size=args.batch_size
     )
     
-    # Save results
-    print(f"\nSaving results to: {args.output}")
-    # Convert results to JSON-serializable format
-    serializable_results = make_json_serializable(results)
-    with open(args.output, 'w') as f:
-        json.dump(serializable_results, f, indent=2)
-    
-    # Print summary
+    # Print detailed results
     print("\n" + "="*60)
     print("Evaluation Results:")
     print("="*60)
+    
+    # Print full results dictionary
+    print("\n完整结果:")
+    print("-"*60)
+    for key, value in results.items():
+        print(f"\n{key}:")
+        if isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                print(f"  {sub_key}:")
+                if isinstance(sub_value, dict):
+                    for metric, metric_value in sub_value.items():
+                        print(f"    {metric}: {metric_value}")
+                else:
+                    print(f"    {sub_value}")
+        else:
+            print(f"  {value}")
+    
+    # Print summary
+    print("\n" + "="*60)
+    print("Summary:")
+    print("="*60)
     for task in task_list:
-        if task in results['results']:
+        if 'results' in results and task in results['results']:
             task_results = results['results'][task]
             print(f"\n{task}:")
             for metric, value in task_results.items():
                 if isinstance(value, (int, float)):
                     print(f"  {metric}: {value:.4f}")
+                else:
+                    print(f"  {metric}: {value}")
     
     print("\n✓ Evaluation complete!")
-    print(f"\nNext step: Use 5_analyze_results.py to analyze the results")
 
 
 if __name__ == "__main__":
