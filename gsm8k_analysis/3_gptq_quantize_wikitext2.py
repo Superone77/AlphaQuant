@@ -24,6 +24,8 @@ if str(ROOT) not in sys.path:
 
 import argparse
 import json
+import random
+import numpy as np
 import torch
 from lm_eval import evaluator
 from lm_eval.models.huggingface import HFLM
@@ -34,6 +36,17 @@ from alphaquant.gptq.gptq import GPTQConfig
 from alphaquant.gptq.data_utils import CalibrationDataLoader
 from alphaquant.utils.eval_utils import make_table
 from gsm8k_analysis.eval_utils import log_samples_with_reasoning
+
+
+def set_seed(seed: int = 42):
+    """Set random seed for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def create_gptq_mxfp4_plan_for_experts(model) -> dict:
@@ -135,6 +148,12 @@ def parse_args():
         default=None,
         help="Save quantized model checkpoint (optional)"
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)"
+    )
     
     return parser.parse_args()
 
@@ -142,14 +161,18 @@ def parse_args():
 def main():
     args = parse_args()
     
+    # Set random seed for reproducibility
+    set_seed(args.seed)
+    
     print("=" * 70)
     print("Step 3: GPTQ + MXFP4 Quantization (WikiText2 Calibration)")
     print("=" * 70)
     print(f"Model: {args.model}")
     print(f"Calibration data: WikiText2")
     print(f"Calibration samples: {args.num_calibration_samples}")
-    print(f"Eval samples: {args.num_eval_samples}")
+    print(f"Eval samples: {args.num_eval_samples} (using FIRST {args.num_eval_samples} from test set)")
     print(f"Quantization format: MXFP4")
+    print(f"Random seed: {args.seed}")
     print(f"Device: {args.device}")
     print("=" * 70)
     

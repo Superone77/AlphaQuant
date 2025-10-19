@@ -23,6 +23,8 @@ if str(ROOT) not in sys.path:
 
 import argparse
 import json
+import random
+import numpy as np
 import torch
 from lm_eval import evaluator
 from lm_eval.models.huggingface import HFLM
@@ -31,6 +33,17 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from alphaquant.utils.replacement import apply_layer_wise_quantization
 from alphaquant.utils.eval_utils import make_table
 from gsm8k_analysis.eval_utils import log_samples_with_reasoning
+
+
+def set_seed(seed: int = 42):
+    """Set random seed for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def create_mxfp4_plan_for_experts(model) -> dict:
@@ -97,6 +110,12 @@ def parse_args():
         default="gsm8k_analysis/configs/mxfp4_rtn_plan.json",
         help="Save quantization plan to file"
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)"
+    )
     
     return parser.parse_args()
 
@@ -104,12 +123,16 @@ def parse_args():
 def main():
     args = parse_args()
     
+    # Set random seed for reproducibility
+    set_seed(args.seed)
+    
     print("=" * 70)
     print("Step 2: MXFP4 Quantization (RTN) + GSM8K Evaluation")
     print("=" * 70)
     print(f"Model: {args.model}")
     print(f"Method: RTN (no calibration)")
-    print(f"Samples: {args.num_samples}")
+    print(f"Samples: {args.num_samples} (using FIRST {args.num_samples} from test set)")
+    print(f"Random seed: {args.seed}")
     print(f"Device: {args.device}")
     print("=" * 70)
     

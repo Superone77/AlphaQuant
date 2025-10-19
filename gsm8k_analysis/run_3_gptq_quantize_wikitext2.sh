@@ -17,6 +17,7 @@ NUM_EVAL_SAMPLES=${3:-256}
 DEVICE=${4:-"cuda"}
 DTYPE=${5:-"bfloat16"}
 BATCH_SIZE=${6:-1}
+SEED=${7:-42}
 
 echo "=========================================="
 echo "Step 3: GPTQ + MXFP4 (WikiText2)"
@@ -24,7 +25,8 @@ echo "=========================================="
 echo "Model: $MODEL"
 echo "Calibration: WikiText2"
 echo "Calibration samples: $NUM_CALIB_SAMPLES"
-echo "Eval samples: $NUM_EVAL_SAMPLES"
+echo "Eval samples: $NUM_EVAL_SAMPLES (FIRST $NUM_EVAL_SAMPLES from test set)"
+echo "Random seed: $SEED"
 echo "Device: $DEVICE"
 echo "Dtype: $DTYPE"
 echo "Batch Size: $BATCH_SIZE"
@@ -43,6 +45,7 @@ python gsm8k_analysis/3_gptq_quantize_wikitext2.py \
     --batch_size $BATCH_SIZE \
     --device "$DEVICE" \
     --dtype "$DTYPE" \
+    --seed $SEED \
     --output gsm8k_analysis/results/gptq_mxfp4_wikitext2.json \
     --save_plan gsm8k_analysis/configs/gptq_mxfp4_wikitext2_plan.json
 
