@@ -30,6 +30,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from alphaquant.utils.replacement import apply_layer_wise_quantization
 from alphaquant.utils.eval_utils import make_table
+from gsm8k_analysis.eval_utils import save_samples_with_reasoning
 
 
 def create_mxfp4_plan_for_experts(model) -> dict:
@@ -150,14 +151,20 @@ def main():
     lm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=args.batch_size, device=args.device)
     
     print("\nRunning GSM8K evaluation...")
-    results = evaluator.simple_evaluate(model=lm, tasks=["gsm8k"], batch_size=args.batch_size, limit=args.num_samples)
+    results = evaluator.simple_evaluate(
+        model=lm, 
+        tasks=["gsm8k"], 
+        batch_size=args.batch_size, 
+        limit=args.num_samples,
+        log_samples=True  # Enable detailed sample logging
+    )
     
     print("\n" + "=" * 70)
     print("MXFP4 (RTN) Evaluation Results")
     print("=" * 70)
     print(make_table(results))
     
-    # Save results
+    # Save aggregate results
     results_with_plan = {
         "results": results,
         "quantization_plan": args.save_plan,
@@ -166,7 +173,11 @@ def main():
     }
     with open(args.output, 'w') as f:
         json.dump(results_with_plan, f, indent=2)
-    print(f"\nSaved results to: {args.output}")
+    print(f"\nSaved aggregate results to: {args.output}")
+    
+    # Save detailed sample-level results with reasoning
+    detailed_output = args.output.replace('.json', '_samples.json')
+    save_samples_with_reasoning(results, detailed_output, task_name="gsm8k")
     
     if 'results' in results and 'gsm8k' in results['results']:
         gsm8k_results = results['results']['gsm8k']
@@ -175,6 +186,8 @@ def main():
             print(f"\nGSM8K Accuracy: {accuracy:.4f}")
     
     print("\n✓ Step 2 complete!")
+    print(f"  - Aggregate results: {args.output}")
+    print(f"  - Detailed samples: {detailed_output}")
 
 
 if __name__ == '__main__':

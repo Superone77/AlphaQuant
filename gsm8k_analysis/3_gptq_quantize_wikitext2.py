@@ -33,6 +33,7 @@ from alphaquant.gptq.quantize import gptq_quantize_model
 from alphaquant.gptq.gptq import GPTQConfig
 from alphaquant.gptq.data_utils import CalibrationDataLoader
 from alphaquant.utils.eval_utils import make_table
+from gsm8k_analysis.eval_utils import save_samples_with_reasoning
 
 
 def create_gptq_mxfp4_plan_for_experts(model) -> dict:
@@ -242,7 +243,8 @@ def main():
         model=lm,
         tasks=["gsm8k"],
         batch_size=args.batch_size,
-        limit=args.num_eval_samples
+        limit=args.num_eval_samples,
+        log_samples=True  # Enable detailed sample logging
     )
     
     print("\n" + "=" * 70)
@@ -250,7 +252,7 @@ def main():
     print("=" * 70)
     print(make_table(results))
     
-    # Save results
+    # Save aggregate results
     results_with_metadata = {
         "results": results,
         "quantization_plan": args.save_plan,
@@ -266,7 +268,11 @@ def main():
     }
     with open(args.output, 'w') as f:
         json.dump(results_with_metadata, f, indent=2)
-    print(f"\nSaved results to: {args.output}")
+    print(f"\nSaved aggregate results to: {args.output}")
+    
+    # Save detailed sample-level results with reasoning
+    detailed_output = args.output.replace('.json', '_samples.json')
+    save_samples_with_reasoning(results, detailed_output, task_name="gsm8k")
     
     if 'results' in results and 'gsm8k' in results['results']:
         gsm8k_results = results['results']['gsm8k']
@@ -275,6 +281,8 @@ def main():
             print(f"\nGSM8K Accuracy: {accuracy:.4f}")
     
     print("\n✓ Step 3 complete!")
+    print(f"  - Aggregate results: {args.output}")
+    print(f"  - Detailed samples: {detailed_output}")
 
 
 if __name__ == '__main__':
