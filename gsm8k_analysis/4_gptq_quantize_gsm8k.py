@@ -33,7 +33,7 @@ from alphaquant.gptq.quantize import gptq_quantize_model
 from alphaquant.gptq.gptq import GPTQConfig
 from gsm8k_analysis.data_utils import GSM8KCalibrationDataLoader
 from alphaquant.utils.eval_utils import make_table
-from gsm8k_analysis.eval_utils import save_samples_with_reasoning
+from gsm8k_analysis.eval_utils import save_samples_with_reasoning, NumpyEncoder
 
 
 def create_gptq_mxfp4_plan_for_experts(model) -> dict:
@@ -267,7 +267,7 @@ def main():
         }
     }
     with open(args.output, 'w') as f:
-        json.dump(results_with_metadata, f, indent=2)
+        json.dump(results_with_metadata, f, indent=2, cls=NumpyEncoder)
     print(f"\nSaved aggregate results to: {args.output}")
     
     # Save detailed sample-level results with reasoning

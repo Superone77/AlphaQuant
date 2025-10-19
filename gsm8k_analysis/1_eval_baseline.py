@@ -28,7 +28,7 @@ from lm_eval.models.huggingface import HFLM
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from alphaquant.utils.eval_utils import make_table
-from gsm8k_analysis.eval_utils import save_samples_with_reasoning
+from gsm8k_analysis.eval_utils import save_samples_with_reasoning, NumpyEncoder
 
 
 def parse_args():
@@ -139,7 +139,7 @@ def main():
     # Save aggregate results
     print(f"\nSaving aggregate results to: {args.output}")
     with open(args.output, 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(results, f, indent=2, cls=NumpyEncoder)
     
     # Save detailed sample-level results with reasoning
     detailed_output = args.output.replace('.json', '_samples.json')

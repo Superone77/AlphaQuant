@@ -30,7 +30,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from alphaquant.utils.replacement import apply_layer_wise_quantization
 from alphaquant.utils.eval_utils import make_table
-from gsm8k_analysis.eval_utils import save_samples_with_reasoning
+from gsm8k_analysis.eval_utils import save_samples_with_reasoning, NumpyEncoder
 
 
 def create_mxfp4_plan_for_experts(model) -> dict:
@@ -172,7 +172,7 @@ def main():
         "quantization_format": "MXFP4"
     }
     with open(args.output, 'w') as f:
-        json.dump(results_with_plan, f, indent=2)
+        json.dump(results_with_plan, f, indent=2, cls=NumpyEncoder)
     print(f"\nSaved aggregate results to: {args.output}")
     
     # Save detailed sample-level results with reasoning

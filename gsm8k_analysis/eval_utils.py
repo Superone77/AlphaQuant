@@ -6,9 +6,27 @@ questions, model answers, and reasoning processes.
 """
 
 import json
+import numpy as np
 from pathlib import Path
 from typing import Dict, Any, List
 from datetime import datetime
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles numpy types."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif hasattr(obj, 'dtype'):
+            # Handle numpy dtypes
+            return str(obj)
+        return super(NumpyEncoder, self).default(obj)
 
 
 def save_detailed_samples(
@@ -54,7 +72,7 @@ def save_detailed_samples(
     }
     
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(detailed_results, f, indent=2, ensure_ascii=False)
+        json.dump(detailed_results, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
     
     print(f"Saved {len(samples)} detailed samples to: {output_path}")
     
@@ -154,7 +172,7 @@ def save_samples_with_reasoning(
     }
     
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(detailed_results, f, indent=2, ensure_ascii=False)
+        json.dump(detailed_results, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
     
     print(f"\n📊 Detailed sample results:")
     print(f"  - Total samples: {len(samples)}")
