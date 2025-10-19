@@ -15,7 +15,7 @@
 set -e  # Exit on error
 
 # Configuration
-MODEL=${1:-"allenai/OLMoE-1B-7B-0924"}
+MODEL=${1:-"allenai/OLMoE-1B-7B-0125-Instruct"}
 MXFP4_RATIO=${2:-0.3}
 BF16_RATIO=${3:-0.0}
 ALPHA_CSV=${4:-"results/alpha_values.csv"}

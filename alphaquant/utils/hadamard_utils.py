@@ -369,3 +369,4 @@ def get_had172() -> torch.Tensor:
     """172x172 Hadamard matrix (for LLaMA-2 7B and up)."""
     raise NotImplementedError("172x172 Hadamard matrix - use full implementation from MoEQuant")
 
+

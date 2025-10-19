@@ -13,8 +13,8 @@
 set -e  # Exit on error
 
 # Configuration
-MODEL=${1:-"allenai/OLMoE-1B-7B-0924"}
-DEVICE=${2:-"cuda"}
+MODEL=${1:-"allenai/OLMoE-1B-7B-0125-Instruct"}
+DEVICE=${2:-"cuda:0"}
 DATASET=${3:-"wikitext2"}
 NSAMPLES=${4:-128}
 CONFIG=${5:-"configs/auto_quant_config.json"}

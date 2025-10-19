@@ -13,8 +13,8 @@
 set -e  # Exit on error
 
 # Configuration
-MODEL=${1:-"allenai/OLMoE-1B-7B-0924"}
-DEVICE=${2:-"cuda"}
+MODEL=${1:-"allenai/OLMoE-1B-7B-0125-Instruct"}
+DEVICE=${2:-"cuda:0"}
 TASKS=${3:-"hellaswag,arc_easy,winogrande"}
 BATCH_SIZE=${4:-8}
 CHECKPOINT=${5:-"results/quantized_model.pt"}

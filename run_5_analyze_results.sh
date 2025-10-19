@@ -36,7 +36,7 @@ mkdir -p results
 # Run analysis
 if [ "$MODE" = "alpha_mse" ]; then
     # Need model for alpha_mse mode
-    MODEL=${4:-"allenai/OLMoE-1B-7B-0924"}
+    MODEL=${4:-"allenai/OLMoE-1B-7B-0125-Instruct"}
     echo "Model: $MODEL"
     python 5_analyze_results.py \
         --mode alpha_mse \

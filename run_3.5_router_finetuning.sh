@@ -15,7 +15,7 @@ echo "Step 3.5: Router Finetuning"
 echo "========================================"
 
 # Configuration
-MODEL="allenai/OLMoE-1B-7B-0924"
+MODEL="allenai/OLMoE-1B-7B-0125-Instruct"
 CHECKPOINT="outputs/quantized_model.pt"
 SAVE_PATH="outputs/router_finetuned_model.pt"
 DATASET="wikitext2"
@@ -30,7 +30,7 @@ NUM_EPOCHS=1
 SEED=42
 
 # Device
-DEVICE="cuda"
+DEVICE="cuda:0"
 
 # Run router finetuning
 python 3.5_router_finetuning.py \

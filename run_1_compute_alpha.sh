@@ -13,8 +13,8 @@
 set -e  # Exit on error
 
 # Configuration
-MODEL=${1:-"allenai/OLMoE-1B-7B-0924"}
-DEVICE=${2:-"cuda"}
+MODEL=${1:-"allenai/OLMoE-1B-7B-0125-Instruct"}
+DEVICE=${2:-"cuda:0"}
 OUTPUT=${3:-"results/alpha_values.csv"}
 
 echo "=========================================="
