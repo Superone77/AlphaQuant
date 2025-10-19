@@ -2,6 +2,7 @@
 # GSM8K Analysis Pipeline Runner
 #
 # This script runs the complete GSM8K analysis pipeline for OLMoE quantization.
+# All quantization uses MXFP4 format, with different methods (RTN vs GPTQ) and calibration data.
 #
 # Usage:
 #   ./gsm8k_analysis/run_pipeline.sh [model] [num_samples] [device]
@@ -30,6 +31,12 @@ echo "Calibration Samples: $NUM_CALIBRATION_SAMPLES"
 echo "Device: $DEVICE"
 echo "Dtype: $DTYPE"
 echo "Batch Size: $BATCH_SIZE"
+echo ""
+echo "Quantization Methods:"
+echo "  1. Baseline (no quantization)"
+echo "  2. MXFP4 (RTN - no calibration)"
+echo "  3. GPTQ + MXFP4 (WikiText2 calibration)"
+echo "  4. GPTQ + MXFP4 (GSM8K calibration)"
 echo "=========================================="
 echo ""
 

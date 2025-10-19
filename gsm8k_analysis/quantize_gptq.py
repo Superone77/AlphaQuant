@@ -27,13 +27,12 @@ from alphaquant.utils.eval_utils import make_table
 from data_utils import GSM8KCalibrationDataLoader
 
 
-def create_gptq_plan_for_experts(model, bits: int = 4) -> dict:
+def create_gptq_plan_for_experts(model) -> dict:
     """
-    Create GPTQ quantization plan for all expert layers.
+    Create GPTQ quantization plan for all expert layers using MXFP4.
     
     Args:
         model: The model to create plan for
-        bits: Number of bits for quantization
         
     Returns:
         Dictionary mapping layer names to quantization schemes
@@ -44,12 +43,14 @@ def create_gptq_plan_for_experts(model, bits: int = 4) -> dict:
     for name, module in model.named_modules():
         # Check if this is an expert layer
         if 'mlp.experts' in name and any(w in name for w in ['w1', 'w2', 'w3']):
-            # Apply INT quantization with GPTQ
+            # Apply MXFP4 quantization with GPTQ
             plan[name] = {
-                "wq": f"int{bits}",
+                "wq": "mxfp4",
                 "aq": None,
                 "group_size": 128,
-                "extra": {}
+                "extra": {
+                    "format": "e8m0"
+                }
             }
     
     return plan
@@ -84,13 +85,6 @@ def parse_args():
         type=int,
         default=256,
         help="Number of GSM8K samples to evaluate"
-    )
-    parser.add_argument(
-        "--bits",
-        type=int,
-        default=4,
-        choices=[2, 3, 4, 8],
-        help="Quantization bits"
     )
     parser.add_argument(
         "--batch_size",
@@ -166,13 +160,13 @@ def main():
         args.save_plan = f"gsm8k_analysis/configs/gptq_{args.calibration_data}_plan.json"
     
     print("=" * 60)
-    print(f"GPTQ Quantization (Calibration: {args.calibration_data})")
+    print(f"GPTQ + MXFP4 Quantization (Calibration: {args.calibration_data})")
     print("=" * 60)
     print(f"Model: {args.model}")
     print(f"Calibration data: {args.calibration_data}")
     print(f"Calibration samples: {args.num_calibration_samples}")
     print(f"Eval samples: {args.num_eval_samples}")
-    print(f"Bits: {args.bits}")
+    print(f"Quantization format: MXFP4")
     print(f"Device: {args.device}")
     print(f"Dtype: {args.dtype}")
     print("=" * 60)
@@ -203,8 +197,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     
     # Create quantization plan
-    print("\nCreating GPTQ quantization plan...")
-    plan = create_gptq_plan_for_experts(model, bits=args.bits)
+    print("\nCreating GPTQ + MXFP4 quantization plan...")
+    plan = create_gptq_plan_for_experts(model)
     print(f"Created plan for {len(plan)} layers")
     
     # Save plan
@@ -238,8 +232,8 @@ def main():
         use_hadamard=False
     )
     
-    # Apply GPTQ quantization
-    print("\nApplying GPTQ quantization...")
+    # Apply GPTQ quantization with MXFP4
+    print("\nApplying GPTQ + MXFP4 quantization...")
     print("This may take a while...")
     quantizers = gptq_quantize_model(
         model=model,
@@ -266,7 +260,8 @@ def main():
                 'actorder': args.actorder
             },
             'calibration_data': args.calibration_data,
-            'num_calibration_samples': args.num_calibration_samples
+            'num_calibration_samples': args.num_calibration_samples,
+            'quantization_format': 'MXFP4'
         }, args.save_model)
     
     # Move model to device for evaluation
@@ -291,7 +286,7 @@ def main():
     
     # Print results
     print("\n" + "=" * 60)
-    print(f"GPTQ ({args.calibration_data}) Evaluation Results")
+    print(f"GPTQ + MXFP4 ({args.calibration_data}) Evaluation Results")
     print("=" * 60)
     print(make_table(results))
     
@@ -303,7 +298,7 @@ def main():
         "calibration_data": args.calibration_data,
         "num_calibration_samples": args.num_calibration_samples,
         "num_quantized_layers": len(quantizers),
-        "bits": args.bits,
+        "quantization_format": "MXFP4",
         "gptq_config": {
             "percdamp": args.percdamp,
             "blocksize": args.blocksize,
@@ -320,9 +315,8 @@ def main():
             accuracy = gsm8k_results['exact_match,strict-match']
             print(f"\nGSM8K Accuracy: {accuracy:.4f}")
     
-    print(f"\n✓ GPTQ ({args.calibration_data}) quantization and evaluation complete!")
+    print(f"\n✓ GPTQ + MXFP4 ({args.calibration_data}) quantization and evaluation complete!")
 
 
 if __name__ == '__main__':
     main()
-

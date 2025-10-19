@@ -4,9 +4,9 @@ GSM8K Analysis Pipeline
 
 This script runs the complete GSM8K analysis pipeline:
 1. Evaluate baseline OLMoE on 256 GSM8K samples
-2. Quantize all experts to MXFP4 and evaluate
-3. GPTQ quantization with wikitext2 calibration and evaluate
-4. GPTQ quantization with GSM8K calibration and evaluate
+2. Quantize all experts to MXFP4 (RTN - no calibration) and evaluate
+3. GPTQ + MXFP4 quantization with wikitext2 calibration and evaluate
+4. GPTQ + MXFP4 quantization with GSM8K calibration and evaluate
 5. Compare and analyze results
 
 Usage:
@@ -97,17 +97,17 @@ def parse_args():
     parser.add_argument(
         "--skip_mxfp4",
         action="store_true",
-        help="Skip MXFP4 quantization"
+        help="Skip MXFP4 (RTN) quantization"
     )
     parser.add_argument(
         "--skip_gptq_wikitext",
         action="store_true",
-        help="Skip GPTQ with wikitext2"
+        help="Skip GPTQ + MXFP4 with wikitext2"
     )
     parser.add_argument(
         "--skip_gptq_gsm8k",
         action="store_true",
-        help="Skip GPTQ with GSM8K"
+        help="Skip GPTQ + MXFP4 with GSM8K"
     )
     parser.add_argument(
         "--output_dir",
@@ -169,10 +169,10 @@ def main():
         else:
             success = False
     
-    # Step 2: MXFP4 quantization
+    # Step 2: MXFP4 (RTN) quantization
     if success and not args.skip_mxfp4:
-        mxfp4_output = output_dir / f"mxfp4_{timestamp}.json"
-        mxfp4_plan = output_dir.parent / "configs" / f"mxfp4_plan_{timestamp}.json"
+        mxfp4_output = output_dir / f"mxfp4_rtn_{timestamp}.json"
+        mxfp4_plan = output_dir.parent / "configs" / f"mxfp4_rtn_plan_{timestamp}.json"
         cmd = [
             "python", "gsm8k_analysis/quantize_mxfp4.py",
             "--model", args.model,
@@ -184,15 +184,15 @@ def main():
             "--save_plan", str(mxfp4_plan)
         ]
         
-        if run_command(cmd, "Step 2: MXFP4 Quantization"):
-            all_results["experiments"]["mxfp4"] = str(mxfp4_output)
+        if run_command(cmd, "Step 2: MXFP4 (RTN) Quantization"):
+            all_results["experiments"]["mxfp4_rtn"] = str(mxfp4_output)
         else:
             success = False
     
-    # Step 3: GPTQ with wikitext2
+    # Step 3: GPTQ + MXFP4 with wikitext2
     if success and not args.skip_gptq_wikitext:
-        gptq_wikitext_output = output_dir / f"gptq_wikitext2_{timestamp}.json"
-        gptq_wikitext_plan = output_dir.parent / "configs" / f"gptq_wikitext2_plan_{timestamp}.json"
+        gptq_wikitext_output = output_dir / f"gptq_mxfp4_wikitext2_{timestamp}.json"
+        gptq_wikitext_plan = output_dir.parent / "configs" / f"gptq_mxfp4_wikitext2_plan_{timestamp}.json"
         cmd = [
             "python", "gsm8k_analysis/quantize_gptq.py",
             "--model", args.model,
@@ -206,15 +206,15 @@ def main():
             "--save_plan", str(gptq_wikitext_plan)
         ]
         
-        if run_command(cmd, "Step 3: GPTQ with WikiText2"):
-            all_results["experiments"]["gptq_wikitext2"] = str(gptq_wikitext_output)
+        if run_command(cmd, "Step 3: GPTQ + MXFP4 with WikiText2"):
+            all_results["experiments"]["gptq_mxfp4_wikitext2"] = str(gptq_wikitext_output)
         else:
             success = False
     
-    # Step 4: GPTQ with GSM8K
+    # Step 4: GPTQ + MXFP4 with GSM8K
     if success and not args.skip_gptq_gsm8k:
-        gptq_gsm8k_output = output_dir / f"gptq_gsm8k_{timestamp}.json"
-        gptq_gsm8k_plan = output_dir.parent / "configs" / f"gptq_gsm8k_plan_{timestamp}.json"
+        gptq_gsm8k_output = output_dir / f"gptq_mxfp4_gsm8k_{timestamp}.json"
+        gptq_gsm8k_plan = output_dir.parent / "configs" / f"gptq_mxfp4_gsm8k_plan_{timestamp}.json"
         cmd = [
             "python", "gsm8k_analysis/quantize_gptq.py",
             "--model", args.model,
@@ -228,8 +228,8 @@ def main():
             "--save_plan", str(gptq_gsm8k_plan)
         ]
         
-        if run_command(cmd, "Step 4: GPTQ with GSM8K"):
-            all_results["experiments"]["gptq_gsm8k"] = str(gptq_gsm8k_output)
+        if run_command(cmd, "Step 4: GPTQ + MXFP4 with GSM8K"):
+            all_results["experiments"]["gptq_mxfp4_gsm8k"] = str(gptq_gsm8k_output)
         else:
             success = False
     

@@ -64,8 +64,8 @@ def extract_accuracy(result_file: Path) -> Dict[str, Any]:
         metrics['calibration_data'] = data['calibration_data']
     if 'num_quantized_layers' in data:
         metrics['num_quantized_layers'] = data['num_quantized_layers']
-    if 'bits' in data:
-        metrics['bits'] = data['bits']
+    if 'quantization_format' in data:
+        metrics['quantization_format'] = data['quantization_format']
     
     return metrics
 
@@ -130,9 +130,9 @@ def main():
             'Experiment': exp_name,
             'Accuracy': metrics.get('accuracy', 'N/A'),
             'Stderr': metrics.get('stderr', 'N/A'),
+            'Method': metrics.get('quantization_format', 'N/A'),
             'Calibration': metrics.get('calibration_data', 'N/A'),
-            'Quantized Layers': metrics.get('num_quantized_layers', 'N/A'),
-            'Bits': metrics.get('bits', 'N/A')
+            'Quantized Layers': metrics.get('num_quantized_layers', 'N/A')
         }
         
         comparison_data.append(row)
@@ -221,13 +221,15 @@ def main():
                 best = quant_methods.iloc[0]
                 f.write(f"Best quantization method: {best['Experiment']}\n")
                 f.write(f"  Accuracy: {best['Accuracy']:.4f}\n")
+                if 'Method' in best and best['Method'] != 'N/A':
+                    f.write(f"  Method: {best['Method']}\n")
                 if 'Calibration' in best and best['Calibration'] != 'N/A':
                     f.write(f"  Calibration: {best['Calibration']}\n")
                 
                 # Compare GPTQ methods if both exist
                 gptq_methods = df[df['Experiment'].str.contains('gptq')]
                 if len(gptq_methods) >= 2:
-                    f.write("\nGPTQ Calibration Comparison:\n")
+                    f.write("\nGPTQ + MXFP4 Calibration Comparison:\n")
                     for _, row in gptq_methods.iterrows():
                         f.write(f"  {row['Calibration']:10s}: {row['Accuracy']:.4f}\n")
     

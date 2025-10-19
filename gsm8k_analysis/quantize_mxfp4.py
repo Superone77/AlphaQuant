@@ -1,7 +1,7 @@
 """
 Quantize all experts to MXFP4 and evaluate on GSM8K.
 
-This script applies MXFP4 quantization to all expert layers in OLMoE.
+This script applies MXFP4 quantization to all expert layers in OLMoE using RTN (no calibration).
 """
 
 import sys
@@ -41,7 +41,7 @@ def create_mxfp4_plan_for_experts(model) -> dict:
     for name, module in model.named_modules():
         # Check if this is an expert layer
         if 'mlp.experts' in name and any(w in name for w in ['w1', 'w2', 'w3']):
-            # Apply MXFP4 quantization
+            # Apply MXFP4 quantization (RTN - no calibration)
             plan[name] = {
                 "wq": "mxfp4",
                 "aq": None,  # No activation quantization
@@ -110,7 +110,7 @@ def main():
     args = parse_args()
     
     print("=" * 60)
-    print("MXFP4 Quantization + GSM8K Evaluation")
+    print("MXFP4 Quantization (RTN) + GSM8K Evaluation")
     print("=" * 60)
     print(f"Model: {args.model}")
     print(f"Samples: {args.num_samples}")
@@ -154,8 +154,8 @@ def main():
     with open(args.save_plan, 'w') as f:
         json.dump(plan, f, indent=2)
     
-    # Apply quantization
-    print("\nApplying MXFP4 quantization...")
+    # Apply quantization (RTN - Round to Nearest, no calibration needed)
+    print("\nApplying MXFP4 quantization (RTN)...")
     replaced = apply_layer_wise_quantization(model, plan, args.dtype)
     print(f"Quantized {len(replaced)} modules")
     
@@ -178,7 +178,7 @@ def main():
     
     # Print results
     print("\n" + "=" * 60)
-    print("MXFP4 Evaluation Results")
+    print("MXFP4 (RTN) Evaluation Results")
     print("=" * 60)
     print(make_table(results))
     
@@ -187,7 +187,8 @@ def main():
     results_with_plan = {
         "results": results,
         "quantization_plan": args.save_plan,
-        "num_quantized_layers": len(replaced)
+        "num_quantized_layers": len(replaced),
+        "quantization_format": "MXFP4"
     }
     with open(args.output, 'w') as f:
         json.dump(results_with_plan, f, indent=2)
@@ -199,9 +200,8 @@ def main():
             accuracy = gsm8k_results['exact_match,strict-match']
             print(f"\nGSM8K Accuracy: {accuracy:.4f}")
     
-    print("\n✓ MXFP4 quantization and evaluation complete!")
+    print("\n✓ MXFP4 (RTN) quantization and evaluation complete!")
 
 
 if __name__ == '__main__':
     main()
-
