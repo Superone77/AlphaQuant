@@ -26,11 +26,37 @@ if str(ROOT) not in sys.path:
 import argparse
 import json
 import torch
+import numpy as np
 from pathlib import Path
 
 from lm_eval import evaluator
 from lm_eval.models.huggingface import HFLM
 from alphaquant.utils.replacement import apply_layer_wise_quantization
+
+
+def make_json_serializable(obj):
+    """
+    Recursively convert numpy types and other non-serializable objects to JSON-serializable types.
+    """
+    if isinstance(obj, dict):
+        return {key: make_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_serializable(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(make_json_serializable(item) for item in obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif hasattr(obj, 'dtype'):
+        # Handle numpy dtype objects
+        return str(obj)
+    else:
+        return obj
 
 
 def parse_args():
@@ -144,8 +170,10 @@ def main():
     
     # Save results
     print(f"\nSaving results to: {args.output}")
+    # Convert results to JSON-serializable format
+    serializable_results = make_json_serializable(results)
     with open(args.output, 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(serializable_results, f, indent=2)
     
     # Print summary
     print("\n" + "="*60)
