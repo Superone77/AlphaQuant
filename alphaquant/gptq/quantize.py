@@ -11,6 +11,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from .gptq import GPTQ, GPTQConfig
+from .gptq_moe import GPTQMoE, create_gptq_for_layer, detect_moe_architecture
 from .model_utils import find_layers, get_layers_for_model, cleanup_memory
 from ..utils.replacement import create_quantizer_from_scheme
 
@@ -51,6 +52,15 @@ def gptq_quantize_model(
         gptq_config = GPTQConfig()
     
     logger.info('===== Starting GPTQ Quantization =====')
+    
+    # Detect MoE architecture
+    if model_type == 'auto':
+        moe_type = detect_moe_architecture(model)
+        logger.info(f'Detected MoE architecture: {moe_type}')
+    else:
+        moe_type = model_type
+    
+    is_moe_model = moe_type in ['mixtral', 'qwen', 'deepseek', 'olmoe', 'generic_moe']
     
     # Disable caching during quantization
     use_cache = model.config.use_cache if hasattr(model.config, 'use_cache') else False
@@ -181,9 +191,34 @@ def gptq_quantize_model(
             
             weight_quantizer = WQ(WCfg(**w_kwargs))
             
-            # Create GPTQ instance
+            # Create GPTQ instance - use MoE-optimized version for expert layers
             use_hadamard = gptq_config.use_hadamard if gptq_config else False
-            gptq = GPTQ(full[name], use_hadamard=use_hadamard)
+            
+            # Detect if this is an MoE expert layer
+            is_expert = is_moe_model and ('expert' in name.lower() or 'experts' in name.lower())
+            expert_id = None
+            if is_expert and '.' in name:
+                # Extract expert ID from name like "mlp.experts.5.gate_proj"
+                parts = name.split('.')
+                for i, part in enumerate(parts):
+                    if part == 'experts' and i + 1 < len(parts):
+                        try:
+                            expert_id = int(parts[i + 1])
+                        except ValueError:
+                            pass
+                        break
+            
+            # Use create_gptq_for_layer to get the appropriate GPTQ instance
+            gptq = create_gptq_for_layer(
+                layer=full[name],
+                layer_name=full_name,
+                is_expert=is_expert,
+                expert_id=expert_id,
+                use_hadamard=use_hadamard
+            )
+            
+            if is_expert:
+                logger.info(f'    Using GPTQMoE for expert {expert_id}')
             
             # Register hook to collect inputs
             def add_batch(name_):

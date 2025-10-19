@@ -164,6 +164,12 @@ class GPTQ:
             for i in range(count):
                 w = W1[:, i]
                 d = Hinv1[i, i]
+                
+                # Safety check: prevent division by very small values
+                if torch.abs(d) < 1e-6:
+                    logging.warning(f'Small diagonal value in Hinv: {d.item()}, clamping to prevent NaN')
+                    # Clamp to minimum absolute value while preserving sign
+                    d = torch.sign(d) * torch.clamp(torch.abs(d), min=1e-6)
 
                 if groupsize != -1:
                     if not static_groups:
@@ -180,6 +186,12 @@ class GPTQ:
                 # Quantize using AlphaQuant's quantizer
                 # The quantizer should support quantize method
                 q = self._quantize_column(quantizer, w.unsqueeze(1)).flatten()
+                
+                # Safety check: ensure quantized weights don't contain NaN/Inf
+                if torch.any(torch.isnan(q)) or torch.any(torch.isinf(q)):
+                    logging.warning(f'NaN or Inf in quantized weights at column {i1+i}, replacing with original weights')
+                    q = w.clone()
+                
                 Q1[:, i] = q
                 Losses1[:, i] = (w - q) ** 2 / d ** 2
 

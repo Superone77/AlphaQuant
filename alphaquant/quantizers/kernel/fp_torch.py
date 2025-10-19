@@ -54,36 +54,52 @@ def fp4_121_scaled(x:torch.Tensor,
     
     elif scale_format == 'e4m3':
         nvfp4_max = fp4_121_max * FP8_E4M3_MAX
-        scale_per_t = x_abs.max() / nvfp4_max
+        # Safety fix: avoid division by zero
+        max_abs = x_abs.max()
+        max_abs = torch.clamp(max_abs, min=1e-12)
+        scale_per_t = max_abs / nvfp4_max
         x_abs_scaled = x_abs / scale_per_t
 
+        # Safety fix: avoid division by zero
         scale_per_b = x_abs_scaled.max(dim=-1, keepdim=True)[0]
+        scale_per_b = torch.clamp(scale_per_b, min=1e-12)
         input_tensor = fp4_121_max / scale_per_b
         down_cast = input_tensor.to(torch.float8_e4m3fn)
         # down_cast = torch.ops.hpu.cast_to_fp8_v2(fp4_121_max / scale_per_b, 1.0, False, False, torch.float8_e4m3fn)[0]
         up_cast = down_cast.to(scale_per_b.dtype)
         scale_per_b = up_cast
-        scale_per_b = torch.where((0 < scale_per_b) * (scale_per_b < torch.inf), scale_per_b, 1.0)
+        scale_per_b = torch.where((0 < scale_per_b) * (scale_per_b < torch.inf) * ~torch.isnan(scale_per_b), scale_per_b, 1.0)
 
         x_fp4_abs = fp4_121_positive(x_abs_scaled * scale_per_b, stochastic_rounding) / scale_per_b
-
-        return sign * x_fp4_abs * scale_per_t
+        
+        result = sign * x_fp4_abs * scale_per_t
+        # Final safety check
+        result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result)
+        return result
     
     elif scale_format == 'ue5m3':
         UE5M3_MAX = 114688.0
         nvfp4_max = fp4_121_max * UE5M3_MAX
-        scale_per_t = x_abs.max() / nvfp4_max
+        # Safety fix: avoid division by zero
+        max_abs = x_abs.max()
+        max_abs = torch.clamp(max_abs, min=1e-12)
+        scale_per_t = max_abs / nvfp4_max
         x_abs_scaled = x_abs / scale_per_t
 
+        # Safety fix: avoid division by zero
         scale_per_b = x_abs_scaled.max(dim=-1, keepdim=True)[0]
+        scale_per_b = torch.clamp(scale_per_b, min=1e-12)
 
         scale_per_b = ue5m3(fp4_121_max / scale_per_b)
         
-        scale_per_b = torch.where((0 < scale_per_b) * (scale_per_b < torch.inf), scale_per_b, 1.0)
+        scale_per_b = torch.where((0 < scale_per_b) * (scale_per_b < torch.inf) * ~torch.isnan(scale_per_b), scale_per_b, 1.0)
 
         x_fp4_abs = fp4_121_positive(x_abs_scaled * scale_per_b, stochastic_rounding) / scale_per_b
 
-        return sign * x_fp4_abs * scale_per_t
+        result = sign * x_fp4_abs * scale_per_t
+        # Final safety check
+        result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result)
+        return result
 
     
     else: # scale_format == 'bf16'
