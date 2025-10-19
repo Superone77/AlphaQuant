@@ -160,7 +160,7 @@ def main():
     # Plan quantization scheme
     logger.info("Planning quantization scheme...")
     plan = plan_model_layer_schemes(model, config)
-    summarize_config(plan)
+    logger.info(summarize_config(config))
     
     # Load calibration data
     logger.info(f"Loading calibration dataset: {args.dataset}")
