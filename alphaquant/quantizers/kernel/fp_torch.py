@@ -44,7 +44,13 @@ def fp4_121_scaled(x:torch.Tensor,
     sign = x.sign()
     x_abs = x.abs()
     if scale_format == 'e8m0':
-        scale = torch.pow(2.0, torch.floor(torch.log2(fp4_121_max / x_abs.max(dim=-1, keepdim=True)[0])))
+        # Safety fix: clamp max_val to avoid division by zero
+        max_val = x_abs.max(dim=-1, keepdim=True)[0]
+        max_val = torch.clamp(max_val, min=1e-12)
+        ratio = fp4_121_max / max_val
+        log_ratio = torch.log2(ratio)
+        log_ratio = torch.clamp(log_ratio, min=-20, max=20)
+        scale = torch.pow(2.0, torch.floor(log_ratio))
     
     elif scale_format == 'e4m3':
         nvfp4_max = fp4_121_max * FP8_E4M3_MAX
@@ -81,11 +87,18 @@ def fp4_121_scaled(x:torch.Tensor,
 
     
     else: # scale_format == 'bf16'
-        scale = fp4_121_max / x_abs.max(dim=-1, keepdim=True)[0]
+        # Safety fix: clamp max_val to avoid division by zero
+        max_val = x_abs.max(dim=-1, keepdim=True)[0]
+        max_val = torch.clamp(max_val, min=1e-12)
+        scale = fp4_121_max / max_val
 
-    scale = torch.where((0 < scale) * (scale < torch.inf), scale, 1.0)
+    # Enhanced safety check for scale
+    scale = torch.where((0 < scale) * (scale < torch.inf) * ~torch.isnan(scale), scale, 1.0)
     x_fp4_abs = fp4_121_positive(x_abs * scale, stochastic_rounding) / scale
-    return sign * x_fp4_abs
+    result = sign * x_fp4_abs
+    # Final safety check to replace any NaN/Inf with zeros
+    result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result)
+    return result
 
 
 def fake_quant_fp4_torch(x:torch.Tensor, 
@@ -325,14 +338,26 @@ def fp6_scaled(x: torch.Tensor, stochastic_rounding: bool = False, format: str =
     sign = x.sign()
     x_abs = x.abs()
     
-    # Calculate block-wise scale using E8M0 format (power of 2)
-    scale = torch.pow(2.0, torch.floor(torch.log2(fp6_max / x_abs.max(dim=-1, keepdim=True)[0])))
-    scale = torch.where((0 < scale) * (scale < torch.inf), scale, 1.0)
+    # Calculate block-wise scale using E8M0 format (power of 2) - with safety fixes
+    # Safety fix: clamp max_val to avoid division by zero
+    max_val = x_abs.max(dim=-1, keepdim=True)[0]
+    max_val = torch.clamp(max_val, min=1e-12)
+    ratio = fp6_max / max_val
+    log_ratio = torch.log2(ratio)
+    log_ratio = torch.clamp(log_ratio, min=-20, max=20)
+    scale = torch.pow(2.0, torch.floor(log_ratio))
+    
+    # Enhanced safety check for scale
+    scale = torch.where((0 < scale) * (scale < torch.inf) * ~torch.isnan(scale), scale, 1.0)
     
     # Quantize absolute values
     x_fp6_abs = fp6_quantize_positive(x_abs * scale, stochastic_rounding, format) / scale
     
-    return sign * x_fp6_abs
+    result = sign * x_fp6_abs
+    # Final safety check to replace any NaN/Inf with zeros
+    result = torch.where(torch.isnan(result) | torch.isinf(result), torch.zeros_like(result), result)
+    
+    return result
 
 
 def mxfp6_torch(x: torch.Tensor, 
